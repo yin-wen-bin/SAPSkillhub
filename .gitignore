@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.env
+*.xlsx
+*.xls
+MB5B_*.txt
+MB5B_diagnostics_*/
+MB5B_ui_inspection_*/
+.artifacts/
