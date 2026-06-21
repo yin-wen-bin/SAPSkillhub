@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP MB5B Export"
+  short_description: "Export and merge SAP MB5B stock workbooks"
+  default_prompt: "Use $sap-mb5b-export to export and merge MB5B workbooks by plant and storage location."
