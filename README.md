@@ -1,10 +1,29 @@
 # SAP Skill Hub
 
-SAP Skill Hub is a bilingual, static catalog for reusable SAP operation skills. The public site is generated directly from the repository's `skills` directory and is designed for GitHub Pages.
+[中文](#中文) | [English](#english)
 
-SAP Skill Hub 是一个用于整理和展示 SAP 操作类 Skill 的中英文静态目录站。主页、详情页和搜索索引都由仓库内的 `skills` 目录自动生成。
+SAP Skill Hub 是一个面向 SAP 操作场景的开源双语 Skill 目录。站点会直接扫描仓库中的 `skills` 目录，自动生成模块导航、全文搜索和中英文详情页。
 
-## Repository structure
+SAP Skill Hub is an open-source, bilingual catalog for reusable SAP operation skills. The website scans the repository's `skills` directory and automatically generates module navigation, full-text search, and localized detail pages.
+
+**在线站点 / Live site:** <https://yin-wen-bin.github.io/SAPSkillhub/>
+
+---
+
+## 中文
+
+### 项目功能
+
+- 按 `Common`、`FI`、`CO`、`SD`、`MM`、`PP` 模块管理 SAP Skill。
+- 自动发现仓库中的 Skill，无需手工维护主页索引。
+- 支持按名称、事务码、说明、标签和正文搜索。
+- 支持模块筛选、URL 查询参数和键盘快捷键 `/`、`Ctrl+K`。
+- 根据浏览器语言选择中文或英文，并支持手动切换。
+- 为每个 Skill 生成独立详情页，展示用途、用法、输入、输出、限制和示例。
+- 提供 GitHub 源码入口和代码块复制功能。
+- 通过 GitHub Actions 自动校验、构建并发布到 GitHub Pages。
+
+### 仓库结构
 
 ```text
 skills/
@@ -14,29 +33,45 @@ skills/
   SD/
   MM/
   PP/
-site/
-tests/
+site/       # Astro 静态站点
+tests/      # Skill 测试
 ```
 
-Each skill must use this contract:
+每个 Skill 必须遵守以下目录契约：
 
 ```text
-skills/<module>/<slug>/
+skills/<模块>/<skill-slug>/
   SKILL.md
   README.zh-CN.md
   README.en.md
-  agents/       # optional
-  references/   # optional
-  scripts/      # optional
+  agents/       # 可选
+  references/   # 可选
+  scripts/      # 可选
 ```
 
-Supported modules are `Common`, `FI`, `CO`, `SD`, `MM`, and `PP`. The directory slug must match the `name` in `SKILL.md`.
+- `<模块>` 只能是 `Common`、`FI`、`CO`、`SD`、`MM` 或 `PP`。
+- `<skill-slug>` 使用小写 kebab-case，并且必须与 `SKILL.md` frontmatter 中的 `name` 一致。
+- `SKILL.md` 保存给 Agent 使用的执行说明。
+- `README.zh-CN.md` 和 `README.en.md` 保存站点展示的双语公开说明。
 
-## Documentation requirements
+### 双语文档规范
 
-Both localized README files require `title`, `summary`, and `tags` frontmatter. `transactions` and `systems` are optional.
+两份本地化 README 都必须包含以下 frontmatter：
 
-Chinese documentation must contain:
+```yaml
+---
+title: Skill 显示名称
+summary: 一句话功能说明
+tags:
+  - 标签
+transactions:  # 可选
+  - MB5B
+systems:       # 可选
+  - SAP S/4HANA
+---
+```
+
+中文文档必须包含：
 
 - 功能概述
 - 适用场景
@@ -46,6 +81,130 @@ Chinese documentation must contain:
 - 输出
 - 限制与注意事项
 - 示例
+
+英文文档必须包含对应的 `Overview`、`Use Cases`、`Prerequisites`、`Usage`、`Inputs`、`Outputs`、`Limitations` 和 `Examples`。
+
+如果缺少语言文件、frontmatter、必填章节，或者目录名称不符合规范，构建会失败，从而阻止不完整内容发布。
+
+### 本地开发
+
+环境要求：
+
+- Node.js 22 或更高版本
+- npm
+- Python 3.12（运行现有 Python Skill 测试时使用）
+
+安装依赖并启动开发服务器：
+
+```powershell
+cd site
+npm install
+npm run validate
+npm test
+npm run dev
+```
+
+默认开发地址为 <http://localhost:4321/>。
+
+从仓库根目录执行完整检查和生产构建：
+
+```powershell
+python -m unittest discover -s tests
+
+cd site
+npm run validate
+npm test
+npm run check
+npm run build
+npm run preview
+```
+
+生产构建使用 `/SAPSkillhub/` 作为 GitHub Pages base path。
+
+### 添加新的 Skill
+
+1. 确认 Skill 所属模块。
+2. 创建 `skills/<模块>/<skill-slug>/`。
+3. 添加 `SKILL.md`、`README.zh-CN.md` 和 `README.en.md`。
+4. 根据需要添加 `agents`、`references` 或 `scripts`。
+5. 在 `site` 目录运行 `npm run validate` 和 `npm test`。
+6. 本地检查中英文主页、详情页、搜索关键词、表格、链接和代码块。
+7. 提交 Pull Request；合并到 `main` 后站点会自动发布。
+
+不需要修改中央索引或主页代码。
+
+### 自动部署
+
+`.github/workflows/pages.yml` 会在 Pull Request 和 `main` 分支更新时运行：
+
+1. 执行 Python Skill 测试。
+2. 校验所有 Skill 的目录和双语文档。
+3. 执行 Vitest 和 Astro 类型检查。
+4. 构建静态站点。
+5. 在 `main` 分支构建成功后发布 GitHub Pages。
+
+---
+
+## English
+
+### Features
+
+- Organizes SAP skills by `Common`, `FI`, `CO`, `SD`, `MM`, and `PP` modules.
+- Automatically discovers skills from the repository; no handwritten homepage index is required.
+- Searches names, transaction codes, summaries, tags, and full documentation text.
+- Supports module filters, shareable URL parameters, and `/` or `Ctrl+K` keyboard shortcuts.
+- Selects Chinese or English from the browser language and provides a manual language switch.
+- Generates a detail page for every skill with purpose, usage, inputs, outputs, limitations, and examples.
+- Provides GitHub source links and copy buttons for code blocks.
+- Uses GitHub Actions to validate, build, and deploy the website to GitHub Pages.
+
+### Repository structure
+
+```text
+skills/
+  Common/
+  FI/
+  CO/
+  SD/
+  MM/
+  PP/
+site/       # Astro static website
+tests/      # Skill tests
+```
+
+Every skill must follow this directory contract:
+
+```text
+skills/<module>/<skill-slug>/
+  SKILL.md
+  README.zh-CN.md
+  README.en.md
+  agents/       # optional
+  references/   # optional
+  scripts/      # optional
+```
+
+- `<module>` must be `Common`, `FI`, `CO`, `SD`, `MM`, or `PP`.
+- `<skill-slug>` must use lowercase kebab-case and match the `name` field in the `SKILL.md` frontmatter.
+- `SKILL.md` contains the execution instructions used by an agent.
+- `README.zh-CN.md` and `README.en.md` contain the public localized documentation rendered by the website.
+
+### Bilingual documentation contract
+
+Both localized README files require this frontmatter:
+
+```yaml
+---
+title: Skill display name
+summary: One-sentence description
+tags:
+  - tag
+transactions:  # optional
+  - MB5B
+systems:       # optional
+  - SAP S/4HANA
+---
+```
 
 English documentation must contain:
 
@@ -58,9 +217,19 @@ English documentation must contain:
 - Limitations
 - Examples
 
-The validation command fails when required content is incomplete, so invalid skills cannot be published.
+Chinese documentation must contain the corresponding `功能概述`, `适用场景`, `前置条件`, `用法`, `输入`, `输出`, `限制与注意事项`, and `示例` sections.
 
-## Local development
+The build fails when a language file, required frontmatter, mandatory section, or valid directory name is missing. Incomplete skills therefore cannot be published.
+
+### Local development
+
+Requirements:
+
+- Node.js 22 or later
+- npm
+- Python 3.12 for the existing Python skill tests
+
+Install dependencies and start the development server:
 
 ```powershell
 cd site
@@ -70,26 +239,41 @@ npm test
 npm run dev
 ```
 
-The development server uses `/` as its base path. Production builds use `/SAPSkillhub/` for GitHub Pages:
+The default development URL is <http://localhost:4321/>.
+
+Run the complete validation and production build from the repository root:
 
 ```powershell
+python -m unittest discover -s tests
+
+cd site
+npm run validate
+npm test
 npm run check
 npm run build
 npm run preview
 ```
 
-## Add a skill
+Production builds use `/SAPSkillhub/` as the GitHub Pages base path.
 
-1. Choose one supported SAP module.
-2. Create `skills/<module>/<slug>/`.
+### Add a new skill
+
+1. Choose the SAP module that owns the skill.
+2. Create `skills/<module>/<skill-slug>/`.
 3. Add `SKILL.md`, `README.zh-CN.md`, and `README.en.md`.
-4. Run `npm run validate` and `npm test` from `site/`.
-5. Open both localized pages locally and verify search terms, links, tables, and code blocks.
+4. Add `agents`, `references`, or `scripts` when needed.
+5. Run `npm run validate` and `npm test` from `site/`.
+6. Review both localized homepages and detail pages, including search terms, tables, links, and code blocks.
+7. Open a pull request; merging to `main` publishes the website automatically.
 
-No central homepage index needs to be edited.
+No central index or homepage code needs to be edited.
 
-## Deployment
+### Automated deployment
 
-GitHub Actions validates the Python skill tests and website content on pull requests. A successful build on `main` deploys `site/dist` through GitHub Pages.
+`.github/workflows/pages.yml` runs for pull requests and updates to `main`:
 
-Expected public URL: <https://yin-wen-bin.github.io/SAPSkillhub/>
+1. Runs the Python skill tests.
+2. Validates every skill directory and localized document.
+3. Runs Vitest and the Astro type checker.
+4. Builds the static website.
+5. Deploys GitHub Pages after a successful build on `main`.
