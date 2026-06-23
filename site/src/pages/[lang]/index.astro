@@ -1,0 +1,31 @@
+---
+import SiteLayout from "../../layouts/SiteLayout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import SkillCatalog from "../../components/SkillCatalog.astro";
+import { loadCatalog, moduleCounts } from "../../lib/catalog";
+import { homePath } from "../../lib/urls";
+import type { Locale } from "../../lib/types";
+
+export function getStaticPaths() {
+  return [{ params: { lang: "zh" } }, { params: { lang: "en" } }];
+}
+
+const locale = Astro.params.lang as Locale;
+const records = await loadCatalog();
+const counts = moduleCounts(records);
+const base = import.meta.env.BASE_URL;
+const alternateLocale: Locale = locale === "zh" ? "en" : "zh";
+const title = locale === "zh" ? "SAP Skill Hub — SAP 操作 Skill 目录" : "SAP Skill Hub — SAP operation skill catalog";
+const description = locale === "zh"
+  ? "搜索和浏览 Common、FI、CO、SD、MM、PP 模块的 SAP 操作 Skill。"
+  : "Search and browse SAP operation skills for Common, FI, CO, SD, MM, and PP.";
+---
+
+<SiteLayout title={title} description={description} locale={locale} alternateHref={homePath(base, alternateLocale)}>
+  <div class="app-shell">
+    <Sidebar locale={locale} counts={counts} />
+    <main id="main-content" class="main-content">
+      <SkillCatalog locale={locale} records={records} counts={counts} />
+    </main>
+  </div>
+</SiteLayout>

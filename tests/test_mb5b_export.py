@@ -13,7 +13,7 @@ import openpyxl
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = REPO_ROOT / "skills" / "sap-mb5b-export" / "scripts" / "mb5b_export.py"
+SCRIPT_PATH = REPO_ROOT / "skills" / "MM" / "sap-mb5b-export" / "scripts" / "mb5b_export.py"
 SPEC = importlib.util.spec_from_file_location("mb5b_export_under_test", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 exporter = importlib.util.module_from_spec(SPEC)

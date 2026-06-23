@@ -1,0 +1,194 @@
+---
+import { ChevronRight, Search } from "@lucide/astro";
+import type { SkillRecord } from "../lib/catalog";
+import { skillPath } from "../lib/urls";
+import { MODULES, type Locale, type SapModule, type SkillSearchItem } from "../lib/types";
+
+interface Props {
+  locale: Locale;
+  records: SkillRecord[];
+  counts: Record<SapModule, number>;
+}
+
+const { locale, records, counts } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const labels = {
+  title: locale === "zh" ? "发现并复用 SAP 操作 Skills" : "Discover and reuse SAP operation skills",
+  intro:
+    locale === "zh"
+      ? "搜索、浏览并使用面向实际 SAP 业务流程的可复用 Skill。"
+      : "Search, explore, and use reusable skills for practical SAP processes.",
+  search:
+    locale === "zh"
+      ? "搜索 Skill、事务码、场景或标签…"
+      : "Search skills, transactions, scenarios, or tags…",
+  allModules: locale === "zh" ? "全部模块" : "All modules",
+  skill: locale === "zh" ? "Skill" : "Skill",
+  summary: locale === "zh" ? "功能说明" : "Summary",
+  module: locale === "zh" ? "模块" : "Module",
+  tags: locale === "zh" ? "标签" : "Tags",
+  results: locale === "zh" ? "个 Skills" : "skills",
+  noResults: locale === "zh" ? "没有找到匹配的 Skill" : "No matching skills found",
+  noResultsHint:
+    locale === "zh" ? "请尝试其他关键词或清除模块筛选。" : "Try another keyword or clear the module filter.",
+};
+
+const items: SkillSearchItem[] = records.map((record) => {
+  const localized = record.locales[locale];
+  return {
+    id: record.id,
+    slug: record.slug,
+    module: record.module,
+    title: localized.title,
+    summary: localized.summary,
+    tags: localized.tags,
+    transactions: localized.transactions,
+    systems: localized.systems,
+    searchText: localized.searchText,
+    href: skillPath(base, locale, record.module, record.slug),
+  };
+});
+---
+
+<section class="catalog" data-catalog-root data-locale={locale}>
+  <header class="catalog-heading">
+    <h1>{labels.title}</h1>
+    <p>{labels.intro}</p>
+  </header>
+
+  <div class="search-shell">
+    <Search size={21} stroke-width={1.8} aria-hidden="true" />
+    <input id="skill-search" type="search" autocomplete="off" placeholder={labels.search} aria-label={labels.search} />
+    <kbd>Ctrl</kbd><kbd>K</kbd>
+  </div>
+
+  <div class="mobile-module-filter">
+    <label for="mobile-module">{labels.module}</label>
+    <select id="mobile-module">
+      <option value="all">{labels.allModules} ({records.length})</option>
+      {MODULES.map((moduleName) => <option value={moduleName}>{moduleName} ({counts[moduleName]})</option>)}
+    </select>
+  </div>
+
+  <div class="catalog-toolbar">
+    <p class="result-count" aria-live="polite">
+      <strong data-result-count>{records.length}</strong> {labels.results}
+    </p>
+    <div class="module-filters" aria-label={labels.module}>
+      <button type="button" class="module-filter active" data-module="all">{labels.allModules}</button>
+      {MODULES.map((moduleName) => (
+        <button type="button" class="module-filter" data-module={moduleName}>{moduleName}</button>
+      ))}
+    </div>
+  </div>
+
+  <div class="catalog-table-head" aria-hidden="true">
+    <span>{labels.skill}</span>
+    <span>{labels.summary}</span>
+    <span>{labels.module}</span>
+    <span>{labels.tags}</span>
+    <span></span>
+  </div>
+
+  <div class="skill-list">
+    {items.map((item, index) => (
+      <article class="skill-row" data-skill-id={item.id} style={`order:${index}`}>
+        <div class="skill-identity">
+          <a class="skill-title" href={item.href}>{item.title}</a>
+          <code>{item.slug}</code>
+        </div>
+        <p class="skill-summary">{item.summary}</p>
+        <span class="module-badge">{item.module}</span>
+        <ul class="tag-list" aria-label={labels.tags}>
+          {[...new Set([...item.transactions, ...item.tags])].slice(0, 4).map((tag) => <li>{tag}</li>)}
+        </ul>
+        <a class="row-action" href={item.href} aria-label={`${item.title} — ${locale === "zh" ? "查看详情" : "View details"}`}>
+          <ChevronRight size={20} stroke-width={1.8} aria-hidden="true" />
+        </a>
+      </article>
+    ))}
+  </div>
+
+  <div class="empty-state" data-empty-state hidden>
+    <h2>{labels.noResults}</h2>
+    <p>{labels.noResultsHint}</p>
+  </div>
+
+  <script is:inline type="application/json" id="skill-search-data" set:html={JSON.stringify(items)} />
+</section>
+
+<script>
+  import { searchSkills } from "../lib/search";
+  import type { SapModule, SkillSearchItem } from "../lib/types";
+
+  const root = document.querySelector<HTMLElement>("[data-catalog-root]");
+  if (root) {
+    const input = root.querySelector<HTMLInputElement>("#skill-search");
+    const mobileModule = root.querySelector<HTMLSelectElement>("#mobile-module");
+    const dataElement = root.querySelector<HTMLScriptElement>("#skill-search-data");
+    const count = root.querySelector<HTMLElement>("[data-result-count]");
+    const emptyState = root.querySelector<HTMLElement>("[data-empty-state]");
+    const moduleButtons = [...root.querySelectorAll<HTMLButtonElement>("[data-module]")];
+    const rows = [...root.querySelectorAll<HTMLElement>("[data-skill-id]")];
+    const records: SkillSearchItem[] = dataElement?.textContent ? JSON.parse(dataElement.textContent) : [];
+    const url = new URL(window.location.href);
+    const initialModule = url.searchParams.get("module");
+    let activeModule: SapModule | "all" = records.some((record) => record.module === initialModule)
+      ? (initialModule as SapModule)
+      : "all";
+
+    if (input) input.value = url.searchParams.get("q") ?? "";
+    if (mobileModule) mobileModule.value = activeModule;
+
+    const updateSidebar = () => {
+      document.querySelectorAll<HTMLElement>("[data-sidebar-module]").forEach((link) => {
+        link.classList.toggle("active", link.dataset.sidebarModule === activeModule);
+      });
+    };
+
+    const render = () => {
+      const query = input?.value ?? "";
+      const matches = searchSkills(records, query, activeModule);
+      const order = new Map(matches.map((record, index) => [record.id, index]));
+
+      for (const row of rows) {
+        const rowOrder = order.get(row.dataset.skillId ?? "");
+        row.hidden = rowOrder === undefined;
+        if (rowOrder !== undefined) row.style.order = String(rowOrder);
+      }
+      if (count) count.textContent = String(matches.length);
+      if (emptyState) emptyState.hidden = matches.length !== 0;
+      moduleButtons.forEach((button) => button.classList.toggle("active", button.dataset.module === activeModule));
+      if (mobileModule) mobileModule.value = activeModule;
+      updateSidebar();
+
+      const nextUrl = new URL(window.location.href);
+      query.trim() ? nextUrl.searchParams.set("q", query.trim()) : nextUrl.searchParams.delete("q");
+      activeModule === "all"
+        ? nextUrl.searchParams.delete("module")
+        : nextUrl.searchParams.set("module", activeModule);
+      window.history.replaceState({}, "", nextUrl);
+    };
+
+    input?.addEventListener("input", render);
+    moduleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        activeModule = (button.dataset.module ?? "all") as SapModule | "all";
+        render();
+      });
+    });
+    mobileModule?.addEventListener("change", () => {
+      activeModule = mobileModule.value as SapModule | "all";
+      render();
+    });
+    document.addEventListener("keydown", (event) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target?.matches("input, textarea, select, [contenteditable='true']");
+      if ((event.ctrlKey && event.key.toLowerCase() === "k") || (event.key === "/" && !isTyping)) {
+        event.preventDefault();
+        input?.focus();
+      }
+    });
+    render();
+  }
+</script>

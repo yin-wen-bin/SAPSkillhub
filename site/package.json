@@ -1,0 +1,28 @@
+{
+  "name": "sap-skill-hub-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "validate": "node scripts/validate-content.mjs",
+    "test": "vitest run",
+    "check": "astro check",
+    "build": "npm run validate && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@lucide/astro": "^1.21.0",
+    "astro": "^6.4.8",
+    "fuse.js": "^7.4.2",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@types/node": "^22.15.0",
+    "axe-core": "^4.12.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

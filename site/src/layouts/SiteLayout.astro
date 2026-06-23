@@ -1,0 +1,41 @@
+---
+import "@fontsource-variable/inter";
+import "../styles/global.css";
+import SiteHeader from "../components/SiteHeader.astro";
+import type { Locale } from "../lib/types";
+
+interface Props {
+  title: string;
+  description: string;
+  locale: Locale;
+  alternateHref: string;
+}
+
+const { title, description, locale, alternateHref } = Astro.props;
+---
+
+<!doctype html>
+<html lang={locale === "zh" ? "zh-CN" : "en"}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="icon" href="data:," />
+    <title>{title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">{locale === "zh" ? "跳到主要内容" : "Skip to main content"}</a>
+    <SiteHeader locale={locale} alternateHref={alternateHref} />
+    <slot />
+    <script is:inline>
+      document.querySelectorAll("[data-language-link]").forEach((link) => {
+        link.addEventListener("click", () => {
+          const locale = link.getAttribute("data-language-link");
+          if (locale) localStorage.setItem("sap-skillhub-language", locale);
+        });
+      });
+    </script>
+  </body>
+</html>

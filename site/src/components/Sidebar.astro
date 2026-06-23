@@ -1,0 +1,71 @@
+---
+import {
+  Boxes,
+  ChartNoAxesCombined,
+  Factory,
+  Landmark,
+  LayoutGrid,
+  Package,
+  ShoppingCart,
+} from "@lucide/astro";
+import { homePath } from "../lib/urls";
+import { MODULES, type Locale, type SapModule } from "../lib/types";
+
+interface Props {
+  locale: Locale;
+  counts: Record<SapModule, number>;
+  activeModule?: SapModule;
+}
+
+const { locale, counts, activeModule } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const labels: Record<SapModule, string> = {
+  Common: "Common",
+  FI: "FI",
+  CO: "CO",
+  SD: "SD",
+  MM: "MM",
+  PP: "PP",
+};
+const icons = {
+  Common: Boxes,
+  FI: Landmark,
+  CO: ChartNoAxesCombined,
+  SD: ShoppingCart,
+  MM: Package,
+  PP: Factory,
+};
+---
+
+<aside class="sidebar" aria-label={locale === "zh" ? "模块导航" : "Module navigation"}>
+  <a class:list={["sidebar-overview", { active: !activeModule }]} href={homePath(base, locale)}>
+    <LayoutGrid size={20} stroke-width={1.8} aria-hidden="true" />
+    <span>{locale === "zh" ? "全部 Skills" : "All skills"}</span>
+  </a>
+  <p class="sidebar-label">{locale === "zh" ? "模块" : "Modules"}</p>
+  <nav>
+    <ul class="module-nav">
+      {MODULES.map((moduleName) => {
+        const Icon = icons[moduleName];
+        return (
+          <li>
+            <a
+              class:list={["module-link", { active: activeModule === moduleName }]}
+              href={`${homePath(base, locale)}?module=${moduleName}`}
+              data-sidebar-module={moduleName}
+            >
+              <Icon size={20} stroke-width={1.8} aria-hidden="true" />
+              <span>{labels[moduleName]}</span>
+              <span class="module-count">{counts[moduleName]}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="https://github.com/yin-wen-bin/SAPSkillhub/blob/main/README.md" target="_blank" rel="noreferrer">
+      {locale === "zh" ? "贡献指南" : "Contribute"}
+    </a>
+  </div>
+</aside>

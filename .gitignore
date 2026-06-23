@@ -7,3 +7,9 @@ MB5B_*.txt
 MB5B_diagnostics_*/
 MB5B_ui_inspection_*/
 .artifacts/
+site/node_modules/
+site/dist/
+site/.astro/
+site/.npm-cache/
+output/playwright/
+.playwright-cli/

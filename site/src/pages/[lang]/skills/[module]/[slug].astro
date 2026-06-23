@@ -1,0 +1,106 @@
+---
+import { render } from "astro:content";
+import { ExternalLink, FolderGit2 } from "@lucide/astro";
+import SiteLayout from "../../../../layouts/SiteLayout.astro";
+import Sidebar from "../../../../components/Sidebar.astro";
+import { loadCatalog, moduleCounts, type SkillRecord } from "../../../../lib/catalog";
+import { homePath, skillPath, sourceUrl } from "../../../../lib/urls";
+import type { Locale } from "../../../../lib/types";
+
+interface Props {
+  locale: Locale;
+  record: SkillRecord;
+}
+
+export async function getStaticPaths() {
+  const records = await loadCatalog();
+  return records.flatMap((record) =>
+    (["zh", "en"] as Locale[]).map((locale) => ({
+      params: { lang: locale, module: record.module, slug: record.slug },
+      props: { locale, record },
+    })),
+  );
+}
+
+const { locale, record } = Astro.props;
+const records = await loadCatalog();
+const counts = moduleCounts(records);
+const localized = record.locales[locale];
+const { Content, headings } = await render(localized.entry);
+const base = import.meta.env.BASE_URL;
+const alternateLocale: Locale = locale === "zh" ? "en" : "zh";
+const alternateHref = skillPath(base, alternateLocale, record.module, record.slug);
+const githubUrl = sourceUrl(record.module, record.slug);
+const tableOfContents = headings.filter((heading) => heading.depth === 2);
+---
+
+<SiteLayout
+  title={`${localized.title} — SAP Skill Hub`}
+  description={localized.summary}
+  locale={locale}
+  alternateHref={alternateHref}
+>
+  <div class="app-shell">
+    <Sidebar locale={locale} counts={counts} activeModule={record.module} />
+    <main id="main-content" class="detail-main">
+      <nav class="breadcrumbs" aria-label={locale === "zh" ? "面包屑" : "Breadcrumb"}>
+        <a href={homePath(base, locale)}>{locale === "zh" ? "全部 Skills" : "All skills"}</a>
+        <span>/</span>
+        <a href={`${homePath(base, locale)}?module=${record.module}`}>{record.module}</a>
+        <span>/</span>
+        <span aria-current="page">{localized.title}</span>
+      </nav>
+
+      <div class="detail-layout">
+        <article class="skill-document">
+          <header class="detail-header">
+            <span class="detail-module-badge">{record.module}</span>
+            <div>
+              <h1>{localized.title}</h1>
+              <p>{localized.summary}</p>
+            </div>
+          </header>
+
+          <div class="detail-meta">
+            <ul class="tag-list detail-tags">
+              {[...new Set([...localized.transactions, ...localized.tags])].map((tag) => <li>{tag}</li>)}
+            </ul>
+            <a class="source-button" href={githubUrl} target="_blank" rel="noreferrer">
+              <FolderGit2 size={18} stroke-width={1.8} aria-hidden="true" />
+              <span>{locale === "zh" ? "在 GitHub 查看源码" : "View source on GitHub"}</span>
+              <ExternalLink size={15} stroke-width={1.8} aria-hidden="true" />
+            </a>
+          </div>
+
+          <div class="markdown-body">
+            <Content />
+          </div>
+        </article>
+
+        <aside class="table-of-contents" aria-label={locale === "zh" ? "本页目录" : "On this page"}>
+          <p>{locale === "zh" ? "本页目录" : "On this page"}</p>
+          <ol>
+            {tableOfContents.map((heading) => <li><a href={`#${heading.slug}`}>{heading.text}</a></li>)}
+          </ol>
+        </aside>
+      </div>
+    </main>
+  </div>
+  <script is:inline>
+    document.querySelectorAll(".markdown-body pre").forEach((pre) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "copy-code-button";
+      button.textContent = document.documentElement.lang.startsWith("zh") ? "复制" : "Copy";
+      button.addEventListener("click", async () => {
+        const code = pre.querySelector("code")?.textContent ?? pre.textContent ?? "";
+        await navigator.clipboard.writeText(code);
+        button.textContent = document.documentElement.lang.startsWith("zh") ? "已复制" : "Copied";
+        window.setTimeout(() => {
+          button.textContent = document.documentElement.lang.startsWith("zh") ? "复制" : "Copy";
+        }, 1500);
+      });
+      pre.append(button);
+    });
+  </script>
+</SiteLayout>

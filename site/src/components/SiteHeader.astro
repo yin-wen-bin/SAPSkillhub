@@ -1,0 +1,42 @@
+---
+import { FolderGit2, Languages } from "@lucide/astro";
+import { homePath } from "../lib/urls";
+import type { Locale } from "../lib/types";
+
+interface Props {
+  locale: Locale;
+  alternateHref: string;
+}
+
+const { locale, alternateHref } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const alternateLocale: Locale = locale === "zh" ? "en" : "zh";
+---
+
+<header class="site-header">
+  <a class="site-brand" href={homePath(base, locale)}>SAP Skill Hub</a>
+  <nav class="header-actions" aria-label={locale === "zh" ? "全局导航" : "Global navigation"}>
+    <a
+      class="header-link"
+      href="https://github.com/yin-wen-bin/SAPSkillhub"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="GitHub"
+    >
+      <FolderGit2 size={18} stroke-width={1.8} aria-hidden="true" />
+      <span>GitHub</span>
+    </a>
+    <span class="header-divider" aria-hidden="true"></span>
+    <a
+      class="language-link"
+      href={alternateHref}
+      data-language-link={alternateLocale}
+      aria-label={locale === "zh" ? "Switch to English" : "切换到中文"}
+    >
+      <Languages size={18} stroke-width={1.8} aria-hidden="true" />
+      <span class:list={{ active: locale === "zh" }}>中文</span>
+      <span aria-hidden="true">/</span>
+      <span class:list={{ active: locale === "en" }}>EN</span>
+    </a>
+  </nav>
+</header>
