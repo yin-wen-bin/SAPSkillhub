@@ -1,0 +1,7 @@
+{
+  "Description": "PRD - Production",
+  "Client": "100",
+  "User": "YOUR_SAP_USER",
+  "Password": "YOUR_SAP_PASSWORD",
+  "LogonLanguage": "EN"
+}

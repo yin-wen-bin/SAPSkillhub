@@ -13,3 +13,4 @@ site/.astro/
 site/.npm-cache/
 output/playwright/
 .playwright-cli/
+/skills/Common/sap-windowsgui-logon/assets/config.json
