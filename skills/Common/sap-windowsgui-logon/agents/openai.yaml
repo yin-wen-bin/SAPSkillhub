@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP Windows GUI Logon"
+  short_description: "Log on through Scripting with SAP Shortcut fallback"
+  default_prompt: "Use $sap-windowsgui-logon to validate my configuration and log on to SAP GUI for Windows."

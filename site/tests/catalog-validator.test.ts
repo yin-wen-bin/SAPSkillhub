@@ -42,7 +42,7 @@ describe("skill content contract", () => {
     const skillsRoot = path.resolve(import.meta.dirname, "..", "..", "skills");
     const result = validateRepository(skillsRoot);
     expect(result.errors).toEqual([]);
-    expect(result.skillCount).toBe(1);
+    expect(result.skillCount).toBe(2);
   });
 
   it("rejects a missing localized section", () => {
