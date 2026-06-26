@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -42,7 +43,13 @@ SAP_PLANT_FIELD_ID = "wnd[0]/usr/ctxtWERKS-LOW"
 SAP_STORAGE_FIELD_ID = "wnd[0]/usr/ctxtLGORT-LOW"
 SAP_DATE_FIELD_ID = "wnd[0]/usr/ctxtDATUM-HIGH"
 SAP_STOCK_TYPE_ID = "wnd[0]/usr/radLGBST"
+SAP_TOTALS_HIERARCHICAL_ID = "wnd[0]/usr/chkXSUM"
+SAP_TOTALS_NON_HIERARCHICAL_ID = "wnd[0]/usr/chkPA_SUMFL"
 
+SAP_FRONTEND_SESSION_CLASS = "SAP_FRONTEND_SESSION"
+SAP_EXCEL_EXPORT_FORMAT_CONTROL_ID = 154
+SAP_EXPORT_TO_CONTROL_ID = 131
+SAP_EXPORT_CANCEL_CONTROL_ID = 123
 COMMON_DIALOG_CLASS = "#32770"
 STANDARD_FILENAME_CONTROL_ID = 0x480
 STANDARD_OK_CONTROL_ID = 1
@@ -54,6 +61,7 @@ KNOWN_FILENAME_AUTOMATION_IDS = {
     "filenamecontrol",
 }
 KNOWN_OK_AUTOMATION_IDS = {"1", "filesave", "savebutton"}
+SAP_LABEL_ID_PATTERN = re.compile(r"/lbl\[(\d+),(\d+)\]$")
 
 
 @dataclass(frozen=True)
@@ -136,6 +144,17 @@ def parse_export_date(value: str) -> ExportDate:
     raise argparse.ArgumentTypeError(
         f"invalid date {value!r}; use YYYY-MM-DD, YYYY/MM/DD, or YYYYMMDD"
     )
+
+
+def format_export_date_for_sap(export_date: ExportDate, sap_date_format: str) -> ExportDate:
+    parsed = datetime.strptime(export_date.token, "%Y%m%d")
+    patterns = {
+        "slash": "%Y/%m/%d",
+        "dot": "%Y.%m.%d",
+        "hyphen": "%Y-%m-%d",
+        "compact": "%Y%m%d",
+    }
+    return ExportDate(parsed.strftime(patterns[sap_date_format]), export_date.token)
 
 
 def safe_filename_part(value: str) -> str:
@@ -316,6 +335,136 @@ def select_storage_location_batch_stock(session) -> str:
     if walk(sap_required(session, "wnd[0]/usr")):
         return "technical-tree-search"
     raise RuntimeError(f"could not select SAP technical control {SAP_STOCK_TYPE_ID}")
+
+
+def sap_label_position(control_id: str) -> tuple[int, int] | None:
+    match = SAP_LABEL_ID_PATTERN.search(control_id)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def snapshot_sap_labels(session) -> dict[tuple[int, int], str]:
+    labels: dict[tuple[int, int], str] = {}
+    try:
+        children = sap_required(session, "wnd[0]/usr").Children
+    except Exception:
+        return labels
+    for child in children:
+        try:
+            if str(child.Type) != "GuiLabel":
+                continue
+            position = sap_label_position(str(child.Id))
+            if position is None:
+                continue
+            text = str(child.Text).strip()
+        except Exception:
+            continue
+        if text:
+            labels[position] = text
+    return labels
+
+
+def extract_table_from_sap_labels(
+    labels: dict[tuple[int, int], str],
+) -> tuple[list[str], list[list[str]]]:
+    if not labels:
+        return [], []
+
+    rows_by_y: dict[int, dict[int, str]] = {}
+    for (x, y), text in labels.items():
+        rows_by_y.setdefault(y, {})[x] = text
+
+    candidate_header_rows = [
+        (y, row)
+        for y, row in rows_by_y.items()
+        if len(row) >= 3 and any(value.strip() for value in row.values())
+    ]
+    if not candidate_header_rows:
+        return [], []
+
+    header_y, header_row = min(candidate_header_rows, key=lambda item: item[0])
+    header_positions = sorted(header_row)
+    headers: list[str] = []
+    seen_headers: dict[str, int] = {}
+    for x in header_positions:
+        header = header_row[x].strip() or f"Column_{x}"
+        if header in seen_headers:
+            seen_headers[header] += 1
+            header = f"{header}_{seen_headers[header]}"
+        else:
+            seen_headers[header] = 1
+        headers.append(header)
+
+    rows: list[list[str]] = []
+    seen_rows: set[tuple[str, ...]] = set()
+    for y in sorted(row_y for row_y in rows_by_y if row_y > header_y):
+        row_map = rows_by_y[y]
+        row = [row_map.get(x, "").strip() for x in header_positions]
+        if not any(row):
+            continue
+        row_tuple = tuple(row)
+        if row_tuple in seen_rows:
+            continue
+        seen_rows.add(row_tuple)
+        rows.append(row)
+    return headers, rows
+
+
+def export_visible_classical_list_to_workbook(
+    session,
+    output_path: Path,
+    log_file: Path,
+) -> bool:
+    labels = snapshot_sap_labels(session)
+    headers, rows = extract_table_from_sap_labels(labels)
+    if not headers or not rows:
+        return False
+
+    workbook = openpyxl.Workbook()
+    try:
+        worksheet = workbook.active
+        worksheet.title = DATA_SHEET
+        worksheet.append(headers)
+        for row in rows:
+            worksheet.append(row)
+        for column_cells in worksheet.columns:
+            column_letter = column_cells[0].column_letter
+            maximum_length = 0
+            for cell in column_cells:
+                value = "" if cell.value is None else str(cell.value)
+                maximum_length = max(maximum_length, len(value))
+            worksheet.column_dimensions[column_letter].width = min(
+                max(maximum_length + 2, 8), 30
+            )
+        workbook.save(output_path)
+    finally:
+        workbook.close()
+
+    log_line(
+        log_file,
+        f"saved SAP classical list workbook: rows={len(rows)}, columns={len(headers)}, output={output_path}",
+    )
+    return True
+
+
+def select_totals_non_hierarchical_representation(session) -> str:
+    try:
+        sap_required(session, SAP_TOTALS_HIERARCHICAL_ID).Selected = False
+        cleared = True
+    except Exception:
+        cleared = False
+
+    try:
+        sap_required(session, SAP_TOTALS_NON_HIERARCHICAL_ID).Selected = True
+    except Exception as exc:
+        raise RuntimeError(
+            f"could not select SAP technical control {SAP_TOTALS_NON_HIERARCHICAL_ID}"
+        ) from exc
+
+    if cleared:
+        return f"{SAP_TOTALS_NON_HIERARCHICAL_ID} (cleared {SAP_TOTALS_HIERARCHICAL_ID})"
+    return SAP_TOTALS_NON_HIERARCHICAL_ID
 
 
 def set_clipboard_text(value: str) -> None:
@@ -573,6 +722,33 @@ def select_standard_button(window: WindowInfo, control_id: int) -> int | None:
     return None
 
 
+def select_excel_export_format_button(window: WindowInfo) -> int | None:
+    if window.class_name != SAP_FRONTEND_SESSION_CLASS:
+        return None
+    for control in controls_of_type(window, "button"):
+        if control.control_id == SAP_EXCEL_EXPORT_FORMAT_CONTROL_ID:
+            return control.index
+    return None
+
+
+def select_export_to_button(window: WindowInfo) -> int | None:
+    if window.class_name != COMMON_DIALOG_CLASS:
+        return None
+    if controls_of_type(window, "edit"):
+        return None
+    buttons = controls_of_type(window, "button")
+    control_ids = {button.control_id for button in buttons}
+    if not {
+        SAP_EXPORT_TO_CONTROL_ID,
+        SAP_EXPORT_CANCEL_CONTROL_ID,
+    }.issubset(control_ids):
+        return None
+    for control in buttons:
+        if control.control_id == SAP_EXPORT_TO_CONTROL_ID:
+            return control.index
+    return None
+
+
 def is_single_ok_dialog(window: WindowInfo) -> bool:
     if controls_of_type(window, "edit"):
         return False
@@ -720,12 +896,32 @@ def find_new_dialogs(
     return candidates
 
 
+def find_excel_export_format_windows(
+    allowed_process_ids: set[int] | None = None,
+) -> list[tuple[Any, WindowInfo, list[Any]]]:
+    candidates: list[tuple[Any, WindowInfo, list[Any]]] = []
+    for window in usable_top_windows():
+        snapshot = snapshot_window(window)
+        if snapshot is None:
+            continue
+        info, wrappers = snapshot
+        if allowed_process_ids and info.process_id not in allowed_process_ids:
+            continue
+        if select_excel_export_format_button(info) is None:
+            continue
+        candidates.append((window, info, wrappers))
+    return candidates
+
+
 def close_tracked_windows(handles: Iterable[int]) -> None:
     handle_set = set(handles)
     if not handle_set:
         return
     for window in usable_top_windows():
         if window_handle(window) not in handle_set:
+            continue
+        snapshot = snapshot_window(window)
+        if snapshot is not None and snapshot[0].class_name == SAP_FRONTEND_SESSION_CLASS:
             continue
         try:
             window.close()
@@ -766,11 +962,30 @@ def dialog_helper(
                 close_tracked_windows(tracked_handles)
                 return 0
 
+            if state == "wait-export" and "excel-format" not in submitted_states:
+                for window, info, wrappers in find_excel_export_format_windows(
+                    allowed_process_ids
+                ):
+                    button_index = select_excel_export_format_button(info)
+                    if button_index is None:
+                        continue
+                    save_window_diagnostic(
+                        window, info, diagnostic_dir, "excel-format-window"
+                    )
+                    click_wrapper(wrappers[button_index])
+                    submitted_states.add("excel-format")
+                    state = "wait-export-or-save"
+                    log_line(
+                        helper_log,
+                        f"excel export format submitted handle={info.handle}",
+                    )
+                    break
+
             candidates = find_new_dialogs(baseline_handles, allowed_process_ids)
             for window, info, wrappers in candidates:
                 tracked_handles.add(info.handle)
 
-                if state == "wait-export":
+                if state in {"wait-export", "wait-export-or-save"}:
                     export_score = score_export_dialog(info)
                     if export_score <= 0:
                         if is_single_ok_dialog(info):
@@ -778,23 +993,25 @@ def dialog_helper(
                             if button_index is not None and "access-ok" not in submitted_states:
                                 click_wrapper(wrappers[button_index])
                                 submitted_states.add("access-ok")
+                        if state == "wait-export":
+                            continue
+                    else:
+                        save_window_diagnostic(window, info, diagnostic_dir, "export-dialog")
+                        edit_index = select_export_filename_control(info)
+                        button_index = select_export_destination_button(info)
+                        if edit_index is None or button_index is None:
+                            log_line(helper_log, "export dialog structure is unsupported")
+                            return 10
+                        if "export" in submitted_states:
+                            continue
+                        set_wrapper_text(wrappers[edit_index], output_path.stem)
+                        click_wrapper(wrappers[button_index])
+                        submitted_states.add("export")
+                        state = "wait-save"
+                        log_line(helper_log, f"export dialog submitted handle={info.handle}")
                         continue
-                    save_window_diagnostic(window, info, diagnostic_dir, "export-dialog")
-                    edit_index = select_export_filename_control(info)
-                    button_index = select_export_destination_button(info)
-                    if edit_index is None or button_index is None:
-                        log_line(helper_log, "export dialog structure is unsupported")
-                        return 10
-                    if "export" in submitted_states:
-                        continue
-                    set_wrapper_text(wrappers[edit_index], output_path.stem)
-                    click_wrapper(wrappers[button_index])
-                    submitted_states.add("export")
-                    state = "wait-save"
-                    log_line(helper_log, f"export dialog submitted handle={info.handle}")
-                    continue
 
-                if state in {"wait-save", "wait-output"}:
+                if state in {"wait-save", "wait-output", "wait-export-or-save"}:
                     save_score = score_save_dialog(info)
                     if save_score > 0:
                         if "save" in submitted_states:
@@ -818,6 +1035,16 @@ def dialog_helper(
                             save_window_diagnostic(window, info, diagnostic_dir, "single-ok-dialog")
                             click_wrapper(wrappers[button_index])
                             submitted_states.add(f"ok-{info.handle}")
+                        continue
+
+                    export_to_index = select_export_to_button(info)
+                    if export_to_index is not None:
+                        if "export-to" not in submitted_states:
+                            save_window_diagnostic(window, info, diagnostic_dir, "export-to-dialog")
+                            click_wrapper(wrappers[export_to_index])
+                            submitted_states.add("export-to")
+                            state = "wait-save"
+                            log_line(helper_log, f"export-to dialog submitted handle={info.handle}")
                         continue
 
                     buttons = controls_of_type(info, "button")
@@ -988,6 +1215,8 @@ def run_one_sap_export(
 
     selected_by = select_storage_location_batch_stock(session)
     log_line(log_file, f"selected stock type by technical control {selected_by}")
+    list_scope_by = select_totals_non_hierarchical_representation(session)
+    log_line(log_file, f"selected list scope by technical control {list_scope_by}")
     sap_required(session, SAP_PLANT_FIELD_ID).Text = plant
     sap_required(session, SAP_STORAGE_FIELD_ID).Text = storage
     sap_required(session, SAP_DATE_FIELD_ID).Text = config.export_date.sap_value
@@ -997,6 +1226,8 @@ def run_one_sap_export(
     sap_required(session, SAP_EXECUTE_BUTTON_ID).Press()
     wait_sap(session)
     log_line(log_file, f"after execute: {sap_info(session)}")
+    if export_visible_classical_list_to_workbook(session, output_path, log_file):
+        return
     if not has_sap_control(session, SAP_EXPORT_BUTTON_ID):
         raise RuntimeError(
             f"export button unavailable: {sap_info(session)}; status={sap_status_text(session)}"
@@ -1145,9 +1376,10 @@ def build_config(args: argparse.Namespace) -> RunConfig:
         else input_path.parent
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+    export_date = format_export_date_for_sap(args.date, args.sap_date_format)
     return RunConfig(
         input_path=input_path,
-        export_date=args.date,
+        export_date=export_date,
         output_dir=output_dir,
         sheet=args.sheet,
         plant_column=args.plant_column,
@@ -1278,6 +1510,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input", type=Path)
     parser.add_argument("--date", type=parse_export_date)
+    parser.add_argument(
+        "--sap-date-format",
+        choices=("slash", "dot", "hyphen", "compact"),
+        default="slash",
+        help="Date format entered into the SAP MB5B date field; output filenames always use YYYYMMDD",
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--sheet", default=DEFAULT_INPUT_SHEET)
     parser.add_argument("--plant-column", default=DEFAULT_PLANT_HEADER)

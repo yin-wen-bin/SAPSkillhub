@@ -18,7 +18,7 @@ systems:
 
 本 Skill 用于自动操作 Windows 版 SAP GUI 中的 MB5B 事务。它从 Excel 工作簿读取工厂和库存地点组合，逐个执行导出，在导出数据中补充库存地点，并将成功结果按工厂合并为一个工作簿。
 
-执行逻辑使用 SAP 技术控件 ID 和 Windows 控件结构，不依赖界面翻译文字或固定屏幕坐标。
+执行逻辑使用 SAP 技术控件 ID 和 Windows 控件结构，不依赖界面翻译文字或固定屏幕坐标。执行 MB5B 前会强制使用非层级汇总的清单范围。
 
 ## 适用场景
 
@@ -27,6 +27,7 @@ systems:
 - 在合并多个 MB5B 导出前补充库存地点字段。
 - SAP GUI 语言、主题、版本或 Windows 缩放发生变化后验证兼容性。
 - 在不操作 SAP 的情况下，通过 dry run 检查目标和输出路径。
+- 支持 SAP 用户日期输入格式为 `YYYY.MM.DD`、`YYYY/MM/DD`、`YYYY-MM-DD` 或 `YYYYMMDD` 的环境。
 
 ## 前置条件
 
@@ -62,6 +63,7 @@ python scripts/mb5b_export.py `
 python scripts/mb5b_export.py `
   --input "C:\work\库存地点.xlsx" `
   --date 2026-02-28 `
+  --sap-date-format dot `
   --limit 1
 ```
 
@@ -73,7 +75,12 @@ python scripts/mb5b_export.py `
 | --- | --- | --- |
 | `--input` | 是 | 包含工厂和库存地点组合的 Excel 工作簿。 |
 | `--date` | 是 | `YYYY-MM-DD` 格式的过账日期。 |
+| `--sap-date-format` | 否 | 写入 SAP 日期字段的格式：`slash`（默认）、`dot`、`hyphen` 或 `compact`。输出文件名始终使用 `YYYYMMDD`。 |
 | `--output-dir` | 否 | 个别导出、合并文件、日志和诊断文件的输出目录。 |
+| `--sheet` | 否 | 工作表名称。默认 `Sheet1`；读取逻辑在默认表不存在时使用第一个工作表。 |
+| `--plant-column` | 否 | 工厂列标题。默认 `プラント`；英文表头可设置为 `Plant`。 |
+| `--storage-column` | 否 | 库存地点列标题。默认 `保管場所`；英文表头可设置为 `S.Loc`。 |
+| `--storage-header` | 否 | 插入到输出 D 列的表头。默认 `保管場所`。 |
 | `--limit` | 否 | 只处理前 N 个目标；首次真实验证使用 `1`。 |
 | `--dry-run` | 否 | 仅验证目标与路径，不控制 SAP。 |
 | `--overwrite` | 否 | 覆盖已有输出；只有在用户明确许可时使用。 |
@@ -91,6 +98,16 @@ python scripts/mb5b_export.py `
 
 进程返回码：`0` 表示全部成功，`1` 表示预检或启动失败，`2` 表示部分导出或合并失败。
 
+## SAP 初始界面默认值
+
+每次执行 MB5B 前，脚本会设置以下 SAP 技术控件：
+
+- `wnd[0]/usr/radLGBST`：库存地点/批次库存。
+- `wnd[0]/usr/chkPA_SUMFL`：Totals Only - Non-Hierarchical Representation。
+- 如存在 `wnd[0]/usr/chkXSUM`，会取消勾选，避免进入层级汇总模式。
+
+如果 SAP 前端 Excel 导出流程没有生成文件，脚本可以从 SAP classical list 的 `GuiLabel` 技术 ID 写出 `.xlsx`，之后继续执行同样的库存地点列补充和按工厂合并规则。
+
 ## 限制与注意事项
 
 - 仅支持 Windows 版 SAP GUI，不自动操作 SAP GUI for HTML 或 SAP Fiori 应用。
@@ -107,7 +124,19 @@ python scripts/mb5b_export.py `
 python scripts/mb5b_export.py `
   --input "C:\work\库存地点.xlsx" `
   --date 2026-02-28 `
+  --sap-date-format slash `
   --output-dir "C:\work\mb5b-test"
+```
+
+处理英文表头 `Plant` / `S.Loc`，且 SAP 日期输入格式为 `YYYY.MM.DD` 的文件：
+
+```powershell
+python scripts/mb5b_export.py `
+  --input "C:\work\StorageLocation.xlsx" `
+  --date 2020-12-31 `
+  --sap-date-format dot `
+  --plant-column "Plant" `
+  --storage-column "S.Loc"
 ```
 
 如果返回码为 `2`，应保留已经成功的工作簿，并从日志中定位失败的工厂/库存地点组合。除非确实需要替换文件，否则不要用 `--overwrite` 重跑成功目标。

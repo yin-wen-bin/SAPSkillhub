@@ -62,6 +62,9 @@ class WorkbookTests(unittest.TestCase):
         parsed = exporter.parse_export_date("2026-02-28")
         self.assertEqual(parsed.sap_value, "2026/02/28")
         self.assertEqual(parsed.token, "20260228")
+        dotted = exporter.format_export_date_for_sap(parsed, "dot")
+        self.assertEqual(dotted.sap_value, "2026.02.28")
+        self.assertEqual(dotted.token, "20260228")
         path = exporter.individual_output_path(Path("C:/out"), "1002", "117G", parsed.token)
         self.assertEqual(path.name, "MB5B_1002_117G_20260228.xlsx")
 
@@ -138,6 +141,7 @@ class WorkbookTests(unittest.TestCase):
         args = argparse.Namespace(
             input=input_path,
             date=exporter.parse_export_date("2026-02-28"),
+            sap_date_format="slash",
             output_dir=directory,
             sheet="Sheet1",
             plant_column="プラント",
@@ -174,6 +178,107 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(worksheet.max_row, 2)
         self.assertEqual(worksheet["D2"].value, "117G")
         workbook.close()
+
+
+class SapSelectionScreenTests(unittest.TestCase):
+    class FakeControl:
+        def __init__(self, selected: bool) -> None:
+            self.Selected = selected
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.controls = {
+                exporter.SAP_TOTALS_HIERARCHICAL_ID: SapSelectionScreenTests.FakeControl(True),
+                exporter.SAP_TOTALS_NON_HIERARCHICAL_ID: SapSelectionScreenTests.FakeControl(False),
+            }
+
+        def FindById(self, control_id: str):
+            return self.controls[control_id]
+
+    def test_totals_non_hierarchical_scope_is_enforced(self) -> None:
+        session = self.FakeSession()
+        selected_by = exporter.select_totals_non_hierarchical_representation(session)
+        self.assertIn(exporter.SAP_TOTALS_NON_HIERARCHICAL_ID, selected_by)
+        self.assertFalse(session.controls[exporter.SAP_TOTALS_HIERARCHICAL_ID].Selected)
+        self.assertTrue(session.controls[exporter.SAP_TOTALS_NON_HIERARCHICAL_ID].Selected)
+
+    def test_excel_export_format_uses_control_id(self) -> None:
+        window = exporter.WindowInfo(
+            1,
+            100,
+            exporter.SAP_FRONTEND_SESSION_CLASS,
+            exporter.RectInfo(0, 0, 800, 400),
+            (
+                exporter.ControlInfo(0, "button", "Button", "", 113, exporter.RectInfo(10, 10, 50, 30), label="任意"),
+                exporter.ControlInfo(
+                    1,
+                    "button",
+                    "Button",
+                    "",
+                    exporter.SAP_EXCEL_EXPORT_FORMAT_CONTROL_ID,
+                    exporter.RectInfo(60, 10, 100, 30),
+                    label="任意",
+                ),
+            ),
+        )
+        self.assertEqual(exporter.select_excel_export_format_button(window), 1)
+
+    def test_export_to_dialog_uses_control_id_pair(self) -> None:
+        window = exporter.WindowInfo(
+            2,
+            100,
+            exporter.COMMON_DIALOG_CLASS,
+            exporter.RectInfo(0, 0, 400, 160),
+            (
+                exporter.ControlInfo(
+                    0,
+                    "button",
+                    "Button",
+                    "",
+                    exporter.SAP_EXPORT_TO_CONTROL_ID,
+                    exporter.RectInfo(200, 100, 260, 130),
+                    label="任意",
+                ),
+                exporter.ControlInfo(
+                    1,
+                    "button",
+                    "Button",
+                    "",
+                    exporter.SAP_EXPORT_CANCEL_CONTROL_ID,
+                    exporter.RectInfo(270, 100, 330, 130),
+                    label="任意",
+                ),
+            ),
+        )
+        self.assertEqual(exporter.select_export_to_button(window), 0)
+
+    def test_classical_list_table_is_extracted_from_label_ids(self) -> None:
+        labels = {
+            (1, 1): "Plnt",
+            (6, 1): "Material",
+            (47, 1): "From Date",
+            (63, 1): "To Date",
+            (79, 1): "Opening Stock",
+            (1, 3): "1710",
+            (6, 3): "FG126",
+            (47, 3): "0000.01.01",
+            (63, 3): "2020.12.31",
+            (79, 3): "0",
+            (1, 4): "1710",
+            (6, 4): "FG129",
+            (47, 4): "0000.01.01",
+            (63, 4): "2020.12.31",
+            (79, 4): "5,300",
+        }
+        headers, rows = exporter.extract_table_from_sap_labels(labels)
+        self.assertEqual(headers, ["Plnt", "Material", "From Date", "To Date", "Opening Stock"])
+        self.assertEqual(
+            rows,
+            [
+                ["1710", "FG126", "0000.01.01", "2020.12.31", "0"],
+                ["1710", "FG129", "0000.01.01", "2020.12.31", "5,300"],
+            ],
+        )
 
 
 class LanguageIndependentSelectorTests(unittest.TestCase):
