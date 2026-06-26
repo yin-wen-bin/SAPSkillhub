@@ -60,8 +60,11 @@ class WorkbookTests(unittest.TestCase):
 
     def test_dates_and_output_names(self) -> None:
         parsed = exporter.parse_export_date("2026-02-28")
-        self.assertEqual(parsed.sap_value, "2026/02/28")
+        self.assertEqual(parsed.sap_value, "2026.02.28")
         self.assertEqual(parsed.token, "20260228")
+        parsed_dotted = exporter.parse_export_date("2026.02.28")
+        self.assertEqual(parsed_dotted.sap_value, "2026.02.28")
+        self.assertEqual(parsed_dotted.token, "20260228")
         path = exporter.individual_output_path(Path("C:/out"), "1002", "117G", parsed.token)
         self.assertEqual(path.name, "MB5B_1002_117G_20260228.xlsx")
 
@@ -230,6 +233,62 @@ class LanguageIndependentSelectorTests(unittest.TestCase):
         )
         window = exporter.WindowInfo(3, 100, "#32770", exporter.RectInfo(0, 0, 700, 260), controls)
         self.assertEqual(exporter.select_standard_button(window, 6), 0)
+
+    def test_sap_internal_export_as_dialog_uses_technical_fields(self) -> None:
+        controls = {
+            exporter.SAP_EXPORT_AS_FILE_ID: FakeSapControl(),
+            exporter.SAP_EXPORT_AS_BUTTON_ID: FakeSapControl(),
+        }
+        session = FakeSapSession(controls)
+
+        result = exporter.submit_sap_export_as_dialog(
+            session,
+            Path(r"C:\out\MB5B_1002_117G_20260228.xlsx"),
+            None,
+        )
+
+        self.assertTrue(result)
+        self.assertEqual(controls[exporter.SAP_EXPORT_AS_FILE_ID].Text, "MB5B_1002_117G_20260228")
+        self.assertTrue(controls[exporter.SAP_EXPORT_AS_BUTTON_ID].pressed)
+
+    def test_sap_internal_save_file_dialog_uses_generate_or_replace(self) -> None:
+        path = Path(r"C:\out\MB5B_1002_117G_20260228.xlsx")
+        controls = {
+            exporter.SAP_SAVE_FILE_PATH_ID: FakeSapControl(),
+            exporter.SAP_SAVE_FILE_NAME_ID: FakeSapControl(),
+            exporter.SAP_SAVE_FILE_GENERATE_BUTTON_ID: FakeSapControl(),
+            exporter.SAP_SAVE_FILE_REPLACE_BUTTON_ID: FakeSapControl(),
+        }
+        session = FakeSapSession(controls)
+
+        generated = exporter.submit_sap_save_file_dialog(session, path, False, None)
+        replaced = exporter.submit_sap_save_file_dialog(session, path, True, None)
+
+        self.assertTrue(generated)
+        self.assertTrue(replaced)
+        self.assertEqual(controls[exporter.SAP_SAVE_FILE_PATH_ID].Text, str(path.parent))
+        self.assertEqual(controls[exporter.SAP_SAVE_FILE_NAME_ID].Text, path.name)
+        self.assertTrue(controls[exporter.SAP_SAVE_FILE_GENERATE_BUTTON_ID].pressed)
+        self.assertTrue(controls[exporter.SAP_SAVE_FILE_REPLACE_BUTTON_ID].pressed)
+
+
+class FakeSapControl:
+    def __init__(self) -> None:
+        self.Text = ""
+        self.pressed = False
+
+    def Press(self) -> None:
+        self.pressed = True
+
+
+class FakeSapSession:
+    Busy = False
+
+    def __init__(self, controls: dict[str, FakeSapControl]) -> None:
+        self.controls = controls
+
+    def FindById(self, control_id: str):
+        return self.controls[control_id]
 
 
 if __name__ == "__main__":

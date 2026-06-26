@@ -42,6 +42,15 @@ SAP_PLANT_FIELD_ID = "wnd[0]/usr/ctxtWERKS-LOW"
 SAP_STORAGE_FIELD_ID = "wnd[0]/usr/ctxtLGORT-LOW"
 SAP_DATE_FIELD_ID = "wnd[0]/usr/ctxtDATUM-HIGH"
 SAP_STOCK_TYPE_ID = "wnd[0]/usr/radLGBST"
+SAP_EXPORT_AS_FILE_ID = (
+    "wnd[1]/usr/ssubSUB_CONFIGURATION:SAPLSALV_GUI_CUL_EXPORT_AS:0512/"
+    "txtGS_EXPORT-FILE_NAME"
+)
+SAP_EXPORT_AS_BUTTON_ID = "wnd[1]/tbar[0]/btn[20]"
+SAP_SAVE_FILE_PATH_ID = "wnd[1]/usr/ctxtDY_PATH"
+SAP_SAVE_FILE_NAME_ID = "wnd[1]/usr/ctxtDY_FILENAME"
+SAP_SAVE_FILE_REPLACE_BUTTON_ID = "wnd[1]/tbar[0]/btn[11]"
+SAP_SAVE_FILE_GENERATE_BUTTON_ID = "wnd[1]/tbar[0]/btn[0]"
 
 COMMON_DIALOG_CLASS = "#32770"
 STANDARD_FILENAME_CONTROL_ID = 0x480
@@ -127,14 +136,14 @@ def log_line(log_file: Path | None, message: str) -> None:
 
 def parse_export_date(value: str) -> ExportDate:
     normalized = value.strip()
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y%m%d"):
         try:
             parsed = datetime.strptime(normalized, fmt)
-            return ExportDate(parsed.strftime("%Y/%m/%d"), parsed.strftime("%Y%m%d"))
+            return ExportDate(parsed.strftime("%Y.%m.%d"), parsed.strftime("%Y%m%d"))
         except ValueError:
             continue
     raise argparse.ArgumentTypeError(
-        f"invalid date {value!r}; use YYYY-MM-DD, YYYY/MM/DD, or YYYYMMDD"
+        f"invalid date {value!r}; use YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD, or YYYYMMDD"
     )
 
 
@@ -963,6 +972,45 @@ def connect_sap_with_access_helper(output_dir: Path):
         remove_ready_file(ready_file)
 
 
+def submit_sap_export_as_dialog(session, output_path: Path, log_file: Path) -> bool:
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if has_sap_control(session, SAP_EXPORT_AS_FILE_ID):
+            sap_required(session, SAP_EXPORT_AS_FILE_ID).Text = output_path.stem
+            sap_required(session, SAP_EXPORT_AS_BUTTON_ID).Press()
+            wait_sap(session)
+            log_line(log_file, "submitted SAP internal Export As dialog")
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def submit_sap_save_file_dialog(
+    session,
+    output_path: Path,
+    overwrite: bool,
+    log_file: Path,
+) -> bool:
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if has_sap_control(session, SAP_SAVE_FILE_PATH_ID) and has_sap_control(
+            session, SAP_SAVE_FILE_NAME_ID
+        ):
+            sap_required(session, SAP_SAVE_FILE_PATH_ID).Text = str(output_path.parent)
+            sap_required(session, SAP_SAVE_FILE_NAME_ID).Text = output_path.name
+            button_id = (
+                SAP_SAVE_FILE_REPLACE_BUTTON_ID
+                if overwrite
+                else SAP_SAVE_FILE_GENERATE_BUTTON_ID
+            )
+            sap_required(session, button_id).Press()
+            wait_sap(session)
+            log_line(log_file, "submitted SAP internal Save File dialog")
+            return True
+        time.sleep(0.25)
+    return False
+
+
 def run_one_sap_export(
     session,
     config: RunConfig,
@@ -1026,6 +1074,8 @@ def run_one_sap_export(
     wait_for_helper_ready(helper, ready_file)
     sap_required(session, SAP_EXPORT_BUTTON_ID).Press()
     wait_sap(session)
+    submit_sap_export_as_dialog(session, output_path, log_file)
+    submit_sap_save_file_dialog(session, output_path, config.overwrite, log_file)
 
     try:
         helper_result = helper.wait(timeout=320)
