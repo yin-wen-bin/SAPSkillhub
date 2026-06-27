@@ -10,7 +10,7 @@ import time
 from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Iterable, Sequence
 
 import openpyxl
@@ -1017,7 +1017,9 @@ def submit_sap_export_as_dialog(session, output_path: Path, log_file: Path) -> b
     deadline = time.time() + 20
     while time.time() < deadline:
         if has_sap_control(session, SAP_EXPORT_AS_FILE_ID):
-            sap_required(session, SAP_EXPORT_AS_FILE_ID).Text = output_path.stem
+            sap_required(session, SAP_EXPORT_AS_FILE_ID).Text = PureWindowsPath(
+                str(output_path)
+            ).stem
             sap_required(session, SAP_EXPORT_AS_BUTTON_ID).Press()
             wait_sap(session)
             log_line(log_file, "submitted SAP internal Export As dialog")
