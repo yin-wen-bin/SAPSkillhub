@@ -63,6 +63,10 @@ KNOWN_FILENAME_AUTOMATION_IDS = {
     "filenamecontrol",
 }
 KNOWN_OK_AUTOMATION_IDS = {"1", "filesave", "savebutton"}
+SAP_SCRIPTING_SECURITY_PROMPTS = (
+    "A script is attempting to access SAP GUI.",
+    "A script is opening a connection to system:",
+)
 
 
 @dataclass(frozen=True)
@@ -589,6 +593,29 @@ def is_single_ok_dialog(window: WindowInfo) -> bool:
     return len(buttons) == 1 and select_standard_button(window, STANDARD_OK_CONTROL_ID) is not None
 
 
+def is_sap_scripting_security_prompt(window: WindowInfo) -> bool:
+    if window.class_name != COMMON_DIALOG_CLASS:
+        return False
+    labels = [control.label.strip() for control in window.controls if control.label]
+    if not any(
+        any(prompt in label for prompt in SAP_SCRIPTING_SECURITY_PROMPTS)
+        for label in labels
+    ):
+        return False
+    return select_standard_button(window, STANDARD_OK_CONTROL_ID) is not None
+
+
+def click_sap_scripting_security_prompt(
+    window: WindowInfo,
+    wrappers: Sequence[Any],
+) -> bool:
+    button_index = select_standard_button(window, STANDARD_OK_CONTROL_ID)
+    if button_index is None:
+        return False
+    click_wrapper(wrappers[button_index])
+    return True
+
+
 def click_wrapper(wrapper) -> None:
     try:
         wrapper.click_input()
@@ -778,6 +805,16 @@ def dialog_helper(
             candidates = find_new_dialogs(baseline_handles, allowed_process_ids)
             for window, info, wrappers in candidates:
                 tracked_handles.add(info.handle)
+                if is_sap_scripting_security_prompt(info):
+                    state_key = f"sap-security-{info.handle}"
+                    if state_key not in submitted_states:
+                        click_sap_scripting_security_prompt(info, wrappers)
+                        submitted_states.add(state_key)
+                        log_line(
+                            helper_log,
+                            f"SAP scripting security prompt confirmed handle={info.handle}",
+                        )
+                    continue
 
                 if state == "wait-export":
                     export_score = score_export_dialog(info)
@@ -870,6 +907,10 @@ def access_helper(timeout: int = 120, ready_file: Path | None = None) -> int:
         for _window, info, wrappers in find_new_dialogs(
             baseline_handles, allowed_process_ids
         ):
+            if is_sap_scripting_security_prompt(info):
+                if click_sap_scripting_security_prompt(info, wrappers):
+                    return 0
+                continue
             if not is_single_ok_dialog(info):
                 continue
             button_index = select_standard_button(info, STANDARD_OK_CONTROL_ID)

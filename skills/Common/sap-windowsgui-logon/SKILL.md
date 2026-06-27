@@ -44,7 +44,12 @@ Store the configuration outside the repository and restrict its NTFS permissions
 
 ## Automation Rules
 
-- Require Windows, SAP GUI for Windows, Python 3.11 or later, and `pywin32==311`.
+- Require Windows, SAP GUI for Windows, Python 3.11 or later, and `pywin32>=311`.
+- Keep `scripts/requirements.txt` pinned to the tested baseline. The logon script
+  accepts installed dependency versions that meet or exceed the minimum and runs
+  the normal validation or login first. If that flow fails while the installed
+  dependency version differs from the tested baseline, report both versions and
+  recommend reproducing with `scripts/requirements.txt`.
 - Try pywin32 SAP GUI Scripting first. Select the connection through `OpenConnection(Description)`, fill the login screen through SAP technical control IDs, and verify the authenticated client and user.
 - Fall back only when Scripting is unavailable before credential submission, the server returns `DisabledByServer`, or no scriptable session/login controls become available.
 - Before fallback, close the incomplete scripting connection when possible, resolve `Description` to a system ID, and launch `sapshcut.exe` with system, client, user, password, and language arguments.

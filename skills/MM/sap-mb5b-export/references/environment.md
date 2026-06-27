@@ -9,6 +9,18 @@
 - Python 3.13 validation baseline
 - Packages from `scripts/requirements.txt`
 
+## Dependency Version Policy
+
+`scripts/requirements.txt` records the tested baseline for SAP GUI and Windows
+dialog automation. Keep these versions pinned for reproducible installs.
+
+`scripts/check_environment.py` allows installed dependency versions that meet or
+exceed the minimum tested versions and runs the normal environment checks first.
+If those checks pass, no package change is required. If the checks fail while the
+installed versions differ from the tested baseline, the checker reports both the
+tested baseline and the current versions so the user can reproduce with
+`scripts/requirements.txt` before further diagnosis.
+
 Install dependencies with:
 
 ```powershell

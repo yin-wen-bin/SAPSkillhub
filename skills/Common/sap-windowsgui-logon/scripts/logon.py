@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from importlib import metadata
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -13,7 +15,9 @@ from typing import Any, Iterable
 
 try:
     import pythoncom
+    import win32con
     import win32com.client
+    import win32gui
     import winreg
 except ImportError as exc:  # pragma: no cover - environment dependent
     WINDOWS_IMPORT_ERROR: Exception | None = exc
@@ -22,8 +26,13 @@ else:
 
 
 DEFAULT_CONFIG = Path.home() / ".sap-windowsgui-logon" / "config.json"
-SECURITY_KEY = r"Software\SAP\SAPGUI Front\SAP Frontend Server\Security"
 REQUIRED_FIELDS = ("Description", "Client", "User", "Password", "LogonLanguage")
+MINIMUM_DEPENDENCIES = {"pywin32": "311"}
+TESTED_DEPENDENCIES = {"pywin32": "311"}
+SAP_SCRIPTING_SECURITY_PROMPTS = (
+    "A script is attempting to access SAP GUI.",
+    "A script is opening a connection to system:",
+)
 
 
 class LogonError(RuntimeError):
@@ -100,34 +109,215 @@ def require_windows_runtime() -> None:
         raise LogonError("SAP GUI for Windows logon requires Windows.")
     if sys.version_info < (3, 11):
         raise LogonError("Python 3.11 or later is required.")
+    assert_dependency_policy()
     if WINDOWS_IMPORT_ERROR is not None:
         raise LogonError(
             "The pywin32 dependency is unavailable. Install scripts/requirements.txt."
         )
 
 
-def read_registry_dword(name: str) -> int | None:
-    assert WINDOWS_IMPORT_ERROR is None
+def version_parts(value: str) -> tuple[int, ...]:
+    parts = tuple(int(part) for part in re.findall(r"\d+", value))
+    return parts or (0,)
+
+
+def version_at_least(installed: str, required: str) -> bool:
+    installed_parts = version_parts(installed)
+    required_parts = version_parts(required)
+    width = max(len(installed_parts), len(required_parts))
+    return installed_parts + (0,) * (width - len(installed_parts)) >= required_parts + (
+        0,
+    ) * (width - len(required_parts))
+
+
+def installed_distribution_version(name: str) -> str | None:
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SECURITY_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, name)
-            return int(value)
-    except (FileNotFoundError, OSError, TypeError, ValueError):
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
         return None
 
 
-def assert_scripting_warnings_disabled() -> None:
-    enabled = [
-        name
-        for name in ("WarnOnConnection", "WarnOnAttach")
-        if read_registry_dword(name) == 1
-    ]
-    if enabled:
-        raise PrimaryMethodUnavailable(
-            "SAP GUI requires manual scripting confirmation "
-            f"({', '.join(enabled)}). Disable these warnings in SAP GUI options; "
-            "the scripting method stopped before submitting credentials."
-        )
+def dependency_policy() -> dict[str, dict[str, object]]:
+    policy: dict[str, dict[str, object]] = {}
+    for name, minimum in MINIMUM_DEPENDENCIES.items():
+        installed = installed_distribution_version(name)
+        tested = TESTED_DEPENDENCIES[name]
+        policy[name] = {
+            "installed": installed,
+            "minimum": minimum,
+            "tested": tested,
+            "meets_minimum": (
+                installed is not None and version_at_least(installed, minimum)
+            ),
+            "matches_tested": installed == tested,
+        }
+    return policy
+
+
+def dependency_failures(
+    policy: dict[str, dict[str, object]],
+) -> list[str]:
+    failures: list[str] = []
+    for name, values in policy.items():
+        installed = values["installed"]
+        minimum = values["minimum"]
+        tested = values["tested"]
+        if installed is None:
+            failures.append(
+                f"Dependency missing: {name}>={minimum} is required; "
+                f"the tested baseline uses {name}=={tested}."
+            )
+        elif not values["meets_minimum"]:
+            failures.append(
+                f"Dependency version too old: {name}=={installed} is installed; "
+                f"{name}>={minimum} is required. The tested baseline uses "
+                f"{name}=={tested}."
+            )
+    return failures
+
+
+def assert_dependency_policy(
+    policy: dict[str, dict[str, object]] | None = None,
+) -> None:
+    failures = dependency_failures(policy or dependency_policy())
+    if failures:
+        raise LogonError(" ".join(failures))
+
+
+def tested_dependency_summary() -> str:
+    return ", ".join(
+        f"{name}=={version}" for name, version in TESTED_DEPENDENCIES.items()
+    )
+
+
+def current_dependency_summary(
+    policy: dict[str, dict[str, object]],
+) -> str:
+    return ", ".join(
+        f"{name}=={values['installed'] or 'not installed'}"
+        for name, values in policy.items()
+    )
+
+
+def dependency_version_drift(policy: dict[str, dict[str, object]]) -> list[str]:
+    return [name for name, values in policy.items() if not values["matches_tested"]]
+
+
+def dependency_drift_advisory(
+    policy: dict[str, dict[str, object]],
+) -> str:
+    if dependency_failures(policy):
+        return ""
+    if not dependency_version_drift(policy):
+        return ""
+    return (
+        "This skill was tested with "
+        f"{tested_dependency_summary()}. Current environment uses "
+        f"{current_dependency_summary(policy)}. Reproduce with "
+        "scripts/requirements.txt before diagnosing further."
+    )
+
+
+def append_dependency_drift_advisory(
+    message: str,
+    policy: dict[str, dict[str, object]],
+) -> str:
+    advisory = dependency_drift_advisory(policy)
+    if not advisory:
+        return message
+    separator = " " if message.endswith((".", "!", "?")) else ". "
+    return f"{message}{separator}{advisory}"
+
+
+def sap_dialog_children(hwnd: int) -> list[tuple[int, str, str]]:
+    assert WINDOWS_IMPORT_ERROR is None
+    children: list[tuple[int, str, str]] = []
+
+    def collect(child: int, _context: object) -> bool:
+        try:
+            children.append(
+                (
+                    child,
+                    str(win32gui.GetClassName(child)),
+                    str(win32gui.GetWindowText(child)),
+                )
+            )
+        except Exception:
+            pass
+        return True
+
+    win32gui.EnumChildWindows(hwnd, collect, None)
+    return children
+
+
+def click_sap_scripting_security_prompt() -> bool:
+    assert WINDOWS_IMPORT_ERROR is None
+    clicked = False
+
+    def inspect(hwnd: int, _context: object) -> bool:
+        nonlocal clicked
+        if clicked:
+            return True
+        try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return True
+            if str(win32gui.GetClassName(hwnd)) != "#32770":
+                return True
+            children = sap_dialog_children(hwnd)
+        except Exception:
+            return True
+
+        texts = [text.strip() for _child, _class_name, text in children if text]
+        if not any(
+            any(prompt in text for prompt in SAP_SCRIPTING_SECURITY_PROMPTS)
+            for text in texts
+        ):
+            return True
+
+        try:
+            ok_button = win32gui.GetDlgItem(hwnd, win32con.IDOK)
+        except Exception:
+            ok_button = 0
+        if not ok_button:
+            return True
+        try:
+            win32gui.SendMessage(ok_button, win32con.BM_CLICK, 0, 0)
+            clicked = True
+        except Exception:
+            pass
+        return True
+
+    win32gui.EnumWindows(inspect, None)
+    return clicked
+
+
+class SapScriptingSecurityPromptConfirmer:
+    def __init__(self, poll_interval: float = 0.25) -> None:
+        self.poll_interval = poll_interval
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.clicked_count = 0
+
+    def start(self) -> None:
+        if WINDOWS_IMPORT_ERROR is not None or self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> int:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        return self.clicked_count
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                if click_sap_scripting_security_prompt():
+                    self.clicked_count += 1
+            except Exception:
+                pass
+            self._stop.wait(self.poll_interval)
 
 
 def registry_executable_candidates(executable_name: str) -> list[Path]:
@@ -438,7 +628,6 @@ def log_on_with_scripting(
     explicit_executable: Path | None,
 ) -> None:
     require_windows_runtime()
-    assert_scripting_warnings_disabled()
     deadline = time.monotonic() + timeout
     assert WINDOWS_IMPORT_ERROR is None
     pythoncom.CoInitialize()
@@ -526,7 +715,9 @@ def main() -> int:
         return 1
 
     configuration: dict[str, str] | None = None
+    policy = dependency_policy()
     try:
+        assert_dependency_policy(policy)
         configuration = read_configuration(args.config)
         if args.validate_only:
             fallback_status = ""
@@ -547,13 +738,18 @@ def main() -> int:
                 f"{fallback_status}"
             )
             return 0
-        method, system_id, primary_reason = log_on_compatible(
-            configuration,
-            args.timeout,
-            args.sap_logon_path,
-            args.sap_shcut_path,
-            not args.disable_sapshcut_fallback,
-        )
+        confirmer = SapScriptingSecurityPromptConfirmer()
+        confirmer.start()
+        try:
+            method, system_id, primary_reason = log_on_compatible(
+                configuration,
+                args.timeout,
+                args.sap_logon_path,
+                args.sap_shcut_path,
+                not args.disable_sapshcut_fallback,
+            )
+        finally:
+            confirmed_prompts = confirmer.stop()
         if method == "scripting":
             print(
                 "SAP GUI logon succeeded through SAP GUI Scripting for Description "
@@ -566,12 +762,23 @@ def main() -> int:
                 f"'{system_id}' and Client '{configuration['Client']}'. Authentication "
                 "cannot be verified because SAP GUI Scripting is unavailable."
             )
+        if confirmed_prompts:
+            print(
+                "Confirmed SAP GUI Scripting security prompts automatically: "
+                f"{confirmed_prompts}."
+            )
         return 0
     except LogonError as exc:
-        print(str(exc), file=sys.stderr)
+        print(append_dependency_drift_advisory(str(exc), policy), file=sys.stderr)
         return 1
     except Exception:
-        print("SAP GUI logon failed because of an unexpected local automation error.", file=sys.stderr)
+        print(
+            append_dependency_drift_advisory(
+                "SAP GUI logon failed because of an unexpected local automation error.",
+                policy,
+            ),
+            file=sys.stderr,
+        )
         return 1
     finally:
         if configuration is not None:

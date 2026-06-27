@@ -20,6 +20,8 @@ This skill reads an SAP environment Description, Client, User, Password, and Log
 
 The Scripting method uses SAP technical control IDs and verifies the client and authenticated user. The SAP Shortcut method does not require GUI Scripting, but can only confirm that the launch request was accepted; it cannot verify authentication.
 
+When SAP GUI shows a standard SAP GUI Scripting security prompt during logon, this skill confirms it only after matching known security prompt text and the standard `OK` control. Multiple-logon, password-change, license, and other secondary business dialogs still stop and require manual handling.
+
 ## Use Cases
 
 - Log on to a fixed SAP Logon environment on the local computer.
@@ -31,12 +33,22 @@ The Scripting method uses SAP technical control IDs and verifies the client and 
 ## Prerequisites
 
 - Windows with SAP GUI for Windows installed.
-- Python 3.11 or later with `pywin32==311` from `scripts/requirements.txt`.
+- Python 3.11 or later with `pywin32>=311`.
 - SAP GUI Scripting enabled on client and server for the preferred method; `sapshcut.exe` for fallback.
 - An SAP Logon connection whose Description exactly matches the configuration.
 - A Description that maps to a System ID in `SAPUILandscape.xml`, or optional `System` in the configuration, for fallback.
 - Authorization for the configured account to log on to the target SAP client.
 - Windows PowerShell 5.1 or later.
+
+## Dependency Version Policy
+
+`scripts/requirements.txt` keeps the tested baseline pinned:
+
+```text
+pywin32==311
+```
+
+The logon script accepts installed dependency versions that meet or exceed the minimum requirement and runs the normal `-ValidateOnly` or logon flow first. If the flow succeeds, no package update or downgrade is required. If the flow fails while the installed `pywin32` version differs from the tested baseline, the script reports both the current version and the tested baseline and recommends reproducing with `scripts/requirements.txt`.
 
 ## Usage
 
@@ -110,7 +122,8 @@ Optional command-line parameters:
 - `Description` must exactly match an existing SAP Logon connection.
 - Automatic fallback occurs only before credential submission. A rejected password, post-submission error, or secondary dialog never causes a second attempt.
 - When the server disables Scripting, the skill cannot verify whether SAP Shortcut completed authentication.
-- The script stops on multiple-logon, password-change, license, or security dialogs and does not choose an option automatically.
+- It only auto-confirms two SAP GUI Scripting security prompts: `A script is attempting to access SAP GUI.` and `A script is opening a connection to system:`.
+- The script stops on multiple-logon, password-change, license, or other secondary dialogs and does not choose an option automatically.
 - A rejected login is not retried because repeated failures can lock the SAP account.
 - SSO, SNC, or other environments without the standard logon fields are not bypassed.
 

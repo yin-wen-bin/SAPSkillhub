@@ -20,6 +20,8 @@ systems:
 
 执行逻辑使用 SAP 技术控件 ID 和 Windows 控件结构，不依赖界面翻译文字或固定屏幕坐标。
 
+运行中如遇到 SAP GUI Scripting 的标准安全提示，本 Skill 仅在识别到已知安全提示文本和标准 `OK` 控件时自动确认；业务弹窗、覆盖确认和其他多按钮对话框仍按安全规则停止或由原状态机处理。
+
 ## 适用场景
 
 - 批量导出多个工厂和库存地点组合的过账日期库存。
@@ -36,6 +38,18 @@ systems:
 - Python 环境已安装 `scripts/requirements.txt` 中的依赖。
 - 输入 Excel 的前两列分别包含工厂和库存地点。
 - 首次在一台电脑运行，或 SAP GUI、Windows 升级后，先阅读 `references/environment.md`。
+
+## 依赖版本策略
+
+`scripts/requirements.txt` 保留已测试通过的精确版本：
+
+```text
+openpyxl==3.1.5
+pywin32==311
+pywinauto==0.6.9
+```
+
+`scripts/check_environment.py` 接受当前环境中满足最低要求的更高版本，并先运行环境检查、输入检查和可选 SAP 会话检查。如果检查成功，不要求更新或降级当前环境。如果检查失败，且当前依赖版本与已测试基线不同，脚本会同时报告当前版本和已测试基线，并建议先用 `scripts/requirements.txt` 复现。
 
 ## 用法
 
@@ -95,6 +109,7 @@ python scripts/mb5b_export.py `
 
 - 仅支持 Windows 版 SAP GUI，不自动操作 SAP GUI for HTML 或 SAP Fiori 应用。
 - 执行依赖技术控件 ID，不使用窗口标题、翻译后的按钮文字、OCR 或固定坐标。
+- 只自动确认两类 SAP GUI Scripting 安全提示：`A script is attempting to access SAP GUI.` 和 `A script is opening a connection to system:`。
 - 遇到含义不明确的多按钮对话框时立即停止，不猜测“允许”“保存”或“覆盖”等操作。
 - 除非明确传入 `--overwrite`，否则保留已有输出文件。
 - dry run 和单目标验证均成功后，才应启动完整真实批次。

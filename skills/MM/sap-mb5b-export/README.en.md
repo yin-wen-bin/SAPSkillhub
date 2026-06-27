@@ -20,6 +20,8 @@ This skill automates transaction MB5B in SAP GUI for Windows. It reads plant and
 
 The implementation uses SAP technical control IDs and Windows control structure so that execution does not depend on translated labels or fixed screen coordinates.
 
+When SAP GUI shows a standard SAP GUI Scripting security prompt, this skill confirms it only after matching known security prompt text and the standard `OK` control. Business dialogs, overwrite confirmations, and other multi-button dialogs still stop safely or follow the existing export state machine.
+
 ## Use Cases
 
 - Export stock-on-posting-date data for many plant and storage-location combinations.
@@ -36,6 +38,18 @@ The implementation uses SAP technical control IDs and Windows control structure 
 - Python with the packages listed in `scripts/requirements.txt`.
 - An input Excel workbook whose first two columns contain plant and storage-location values.
 - Review `references/environment.md` before the first live run on a machine or after an SAP GUI or Windows upgrade.
+
+## Dependency Version Policy
+
+`scripts/requirements.txt` keeps the tested baseline pinned:
+
+```text
+openpyxl==3.1.5
+pywin32==311
+pywinauto==0.6.9
+```
+
+`scripts/check_environment.py` accepts installed dependency versions that meet or exceed the minimum requirements and runs the normal environment, input, and optional SAP session checks first. If those checks pass, no package update or downgrade is required. If the checks fail while the installed versions differ from the tested baseline, the script reports both the current versions and the tested baseline and recommends reproducing with `scripts/requirements.txt`.
 
 ## Usage
 
@@ -95,6 +109,7 @@ The process returns exit code `0` for full success, `1` for preflight or startup
 
 - The skill supports SAP GUI for Windows; it does not automate SAP GUI for HTML or SAP Fiori apps.
 - Execution relies on technical control IDs. It intentionally does not use window titles, translated button text, OCR, or fixed coordinates.
+- It only auto-confirms two SAP GUI Scripting security prompts: `A script is attempting to access SAP GUI.` and `A script is opening a connection to system:`.
 - Ambiguous multi-button dialogs stop the run. The automation never guesses which action means allow, save, or overwrite.
 - Existing output files are preserved unless `--overwrite` is explicitly supplied.
 - A live batch should not be started until the dry run and one-target validation have both succeeded.
