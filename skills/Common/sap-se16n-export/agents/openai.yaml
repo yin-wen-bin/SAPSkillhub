@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP SE16N Export"
+  short_description: "Export SAP SE16N table results to Excel"
+  default_prompt: "Use $sap-se16n-export to export an SAP SE16N table result to Excel from SAP GUI for Windows."
