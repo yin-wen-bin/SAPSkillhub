@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP SE38 Export"
+  short_description: "Export ABAP program source from SE38"
+  default_prompt: "Use $sap-se38-export to download an ABAP program from SAP SE38 to a local path."
