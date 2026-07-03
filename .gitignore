@@ -8,6 +8,7 @@ MB5B_diagnostics_*/
 MB5B_ui_inspection_*/
 .artifacts/
 output/
+design-qa.md
 site/node_modules/
 site/dist/
 site/.astro/
