@@ -1,0 +1,13 @@
+program=ZPNMB023F01
+parent=ZPNMB023
+target=D:\SAPskillhub\output\se38_export_ZPNMB023_20260703_082803\ZPNMB023-INCLUDE-ZPNMB023F01.abap
+ok=True
+returncode=0
+
+STDOUT
+
+
+STDERR
+C:\Users\Fujitsu\.codex\skills\sap-se38-export\scripts\se38_export.vbs(65, 1) SAP Frontend Server: The control could not be found by id.
+
+
