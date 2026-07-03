@@ -18,7 +18,7 @@ systems:
 
 This skill automates transaction SE38 in SAP GUI for Windows. It uses `scripts/se38_export.vbs` to open a specified ABAP program and save the source to a local file through the recorded SE38 menu path.
 
-The script is based on `D:\Skills\sap-se38-export\se38_export.vbs`, where the program was hard-coded as `SAPLSE16N` and the output directory as `D:\Skills\sap-se38-export`. The repository version requires two runtime parameters instead: the program name and the output path.
+The script is based on `<LOCAL_SKILL_PATH>\sap-se38-export\se38_export.vbs`, where the program was hard-coded as `SAPLSE16N` and the output directory as `<LOCAL_SKILL_PATH>\sap-se38-export`. The repository version requires two runtime parameters instead: the program name and the output path.
 
 ## Use Cases
 
@@ -43,13 +43,13 @@ Run the download with a program name and a full output file path:
 ```powershell
 cscript //nologo scripts\se38_export.vbs `
   /program:SAPLSE16N `
-  /out:"C:\work\abap\SAPLSE16N.abap"
+  /out:"<LOCAL_WORKSPACE>\abap\SAPLSE16N.abap"
 ```
 
 If `/out` points to an existing directory, or ends with a backslash, the script uses the program name as the filename:
 
 ```powershell
-cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"C:\work\abap\"
+cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"<LOCAL_WORKSPACE>\abap\"
 ```
 
 ## Inputs
@@ -83,7 +83,7 @@ cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"C:\work\aba
 Download `SAPLSE16N` source to a test directory:
 
 ```powershell
-cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"C:\work\se38-test\SAPLSE16N.abap"
+cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"<LOCAL_WORKSPACE>\se38-test\SAPLSE16N.abap"
 ```
 
 After confirming that the file opens and contains the expected source, rerun with the target program and production output path.

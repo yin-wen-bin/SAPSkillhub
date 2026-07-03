@@ -6,7 +6,7 @@ SAP Skill Hub 是一个面向 SAP 操作场景的开源双语 Skill 目录。站
 
 SAP Skill Hub is an open-source, bilingual catalog for reusable SAP operation skills. The website scans the repository's `skills` directory and automatically generates module navigation, full-text search, and localized detail pages.
 
-**在线站点 / Live site:** <https://yin-wen-bin.github.io/SAPSkillhub/>
+**在线站点 / Live site:** `<PUBLIC_GITHUB_PAGES_URL>`
 
 ---
 

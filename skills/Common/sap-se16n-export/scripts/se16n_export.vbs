@@ -1,12 +1,13 @@
 ' Export an SE16N table result to XLSX through SAP GUI Scripting.
 ' Usage:
-'   cscript //nologo se16n_export.vbs /table:MARA /maxhits:100 /outdir:"C:\work\se16n" /file:"mara.xlsx"
+'   cscript //nologo se16n_export.vbs /table:MARA /maxhits:100 /outdir:"<LOCAL_WORKSPACE>\se16n" /file:"mara.xlsx"
 Option Explicit
 
 Dim tableName
 Dim maxHits
 Dim outputDir
 Dim outputFile
+Dim defaultOutputDir
 Dim securityHelper
 Dim securityTimeout
 Dim fso
@@ -15,9 +16,12 @@ Dim application
 Dim connection
 Dim session
 
+Set fso = CreateObject("Scripting.FileSystemObject")
+defaultOutputDir = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), "output")
+
 tableName = UCase(Trim(GetNamedArg("table", "MARA")))
 maxHits = Trim(GetNamedArg("maxhits", "2147483647"))
-outputDir = TrimTrailingSlash(Trim(GetNamedArg("outdir", "D:\Skills\sap-se16n-export")))
+outputDir = TrimTrailingSlash(Trim(GetNamedArg("outdir", defaultOutputDir)))
 outputFile = Trim(GetNamedArg("file", LCase(tableName) & ".xlsx"))
 securityHelper = LCase(Trim(GetNamedArg("securityhelper", "true")))
 securityTimeout = Trim(GetNamedArg("securitytimeout", "60"))
@@ -29,7 +33,6 @@ If Len(outputFile) = 0 Then Fail "Missing /file value."
 If Len(securityTimeout) = 0 Or Not IsNumeric(securityTimeout) Then Fail "Missing or invalid /securitytimeout value."
 If InStrRev(outputFile, ".") = 0 Then outputFile = outputFile & ".xlsx"
 
-Set fso = CreateObject("Scripting.FileSystemObject")
 CreateFolderRecursive outputDir
 If securityHelper <> "false" Then StartSecurityPromptHelper CLng(securityTimeout)
 

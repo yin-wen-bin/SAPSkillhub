@@ -18,7 +18,7 @@ systems:
 
 本 Skill 用于自动操作 Windows 版 SAP GUI 中的 SE38 事务。它基于 `scripts/se38_export.vbs` 打开指定 ABAP 程序，并通过录制的 SE38 菜单路径将源码保存到本地文件。
 
-脚本来源于 `D:\Skills\sap-se38-export\se38_export.vbs`，原始录制中程序名固定为 `SAPLSE16N`，输出目录固定为 `D:\Skills\sap-se38-export`。仓库版脚本已改为运行时传入两个必填参数：程序名和输出路径。
+脚本来源于 `<LOCAL_SKILL_PATH>\sap-se38-export\se38_export.vbs`，原始录制中程序名固定为 `SAPLSE16N`，输出目录固定为 `<LOCAL_SKILL_PATH>\sap-se38-export`。仓库版脚本已改为运行时传入两个必填参数：程序名和输出路径。
 
 ## 适用场景
 
@@ -43,13 +43,13 @@ systems:
 ```powershell
 cscript //nologo scripts\se38_export.vbs `
   /program:SAPLSE16N `
-  /out:"C:\work\abap\SAPLSE16N.abap"
+  /out:"<LOCAL_WORKSPACE>\abap\SAPLSE16N.abap"
 ```
 
 如果 `/out` 指向已存在目录，或以反斜杠结尾，脚本会用程序名作为文件名：
 
 ```powershell
-cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"C:\work\abap\"
+cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"<LOCAL_WORKSPACE>\abap\"
 ```
 
 ## 输入
@@ -83,7 +83,7 @@ cscript //nologo scripts\se38_export.vbs /program:ZDEMO_REPORT /out:"C:\work\aba
 下载 `SAPLSE16N` 源码到测试目录：
 
 ```powershell
-cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"C:\work\se38-test\SAPLSE16N.abap"
+cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"<LOCAL_WORKSPACE>\se38-test\SAPLSE16N.abap"
 ```
 
 确认文件可打开且内容正确后，再替换为目标程序名和正式输出路径。

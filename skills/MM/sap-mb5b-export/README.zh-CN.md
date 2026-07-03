@@ -57,7 +57,7 @@ pywinauto==0.6.9
 
 ```powershell
 python scripts/check_environment.py `
-  --input "C:\work\库存地点.xlsx" `
+  --input "<LOCAL_WORKSPACE>\库存地点.xlsx" `
   --require-sap
 ```
 
@@ -65,7 +65,7 @@ python scripts/check_environment.py `
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\库存地点.xlsx" `
+  --input "<LOCAL_WORKSPACE>\库存地点.xlsx" `
   --date 2026-02-28 `
   --dry-run
 ```
@@ -74,7 +74,7 @@ python scripts/mb5b_export.py `
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\库存地点.xlsx" `
+  --input "<LOCAL_WORKSPACE>\库存地点.xlsx" `
   --date 2026-02-28 `
   --limit 1
 ```
@@ -120,9 +120,9 @@ python scripts/mb5b_export.py `
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\库存地点.xlsx" `
+  --input "<LOCAL_WORKSPACE>\库存地点.xlsx" `
   --date 2026-02-28 `
-  --output-dir "C:\work\mb5b-test"
+  --output-dir "<LOCAL_WORKSPACE>\mb5b-test"
 ```
 
 如果返回码为 `2`，应保留已经成功的工作簿，并从日志中定位失败的工厂/库存地点组合。除非确实需要替换文件，否则不要用 `--overwrite` 重跑成功目标。

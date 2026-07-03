@@ -1,4 +1,5 @@
 import type { Locale, SapModule } from "./types";
+import { repositoryBranch, repositoryUrl } from "./siteConfig";
 
 export function withBase(base: string, ...segments: string[]): string {
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
@@ -18,5 +19,5 @@ export function skillPath(base: string, locale: Locale, moduleName: SapModule, s
 }
 
 export function sourceUrl(moduleName: SapModule, slug: string): string {
-  return `https://github.com/yin-wen-bin/SAPSkillhub/tree/main/skills/${moduleName}/${slug}`;
+  return `${repositoryUrl}/tree/${repositoryBranch}/skills/${moduleName}/${slug}`;
 }

@@ -19,15 +19,15 @@ Use the bundled Python workflow. Do not recreate the SAP automation with VBS or 
 ## Commands
 
 ```powershell
-python scripts/check_environment.py --input "C:\work\保管場所.xlsx" --require-sap
+python scripts/check_environment.py --input "<LOCAL_WORKSPACE>\保管場所.xlsx" --require-sap
 
 python scripts/mb5b_export.py `
-  --input "C:\work\保管場所.xlsx" `
+  --input "<LOCAL_WORKSPACE>\保管場所.xlsx" `
   --date 2026-02-28 `
   --dry-run
 
 python scripts/mb5b_export.py `
-  --input "C:\work\保管場所.xlsx" `
+  --input "<LOCAL_WORKSPACE>\保管場所.xlsx" `
   --date 2026-02-28 `
   --limit 1
 ```

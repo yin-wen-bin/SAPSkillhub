@@ -65,7 +65,7 @@ class WorkbookTests(unittest.TestCase):
         parsed_dotted = exporter.parse_export_date("2026.02.28")
         self.assertEqual(parsed_dotted.sap_value, "2026.02.28")
         self.assertEqual(parsed_dotted.token, "20260228")
-        path = exporter.individual_output_path(Path("C:/out"), "1002", "117G", parsed.token)
+        path = exporter.individual_output_path(Path("local-output"), "1002", "117G", parsed.token)
         self.assertEqual(path.name, "MB5B_1002_117G_20260228.xlsx")
 
     def test_read_targets_and_limit(self) -> None:
@@ -243,7 +243,7 @@ class LanguageIndependentSelectorTests(unittest.TestCase):
 
         result = exporter.submit_sap_export_as_dialog(
             session,
-            Path(r"C:\out\MB5B_1002_117G_20260228.xlsx"),
+            Path(r"local-output\MB5B_1002_117G_20260228.xlsx"),
             None,
         )
 
@@ -252,7 +252,7 @@ class LanguageIndependentSelectorTests(unittest.TestCase):
         self.assertTrue(controls[exporter.SAP_EXPORT_AS_BUTTON_ID].pressed)
 
     def test_sap_internal_save_file_dialog_uses_generate_or_replace(self) -> None:
-        path = Path(r"C:\out\MB5B_1002_117G_20260228.xlsx")
+        path = Path(r"local-output\MB5B_1002_117G_20260228.xlsx")
         controls = {
             exporter.SAP_SAVE_FILE_PATH_ID: FakeSapControl(),
             exporter.SAP_SAVE_FILE_NAME_ID: FakeSapControl(),

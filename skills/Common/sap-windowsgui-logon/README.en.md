@@ -80,7 +80,7 @@ Pass a path when using a non-default configuration:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File "scripts\logon.ps1" `
-  -ConfigPath "C:\secure\sap-logon.json"
+  -ConfigPath "<LOCAL_CONFIG_PATH>\sap-logon.json"
 ```
 
 ## Inputs
@@ -146,7 +146,7 @@ Specify SAP Logon when it cannot be discovered automatically:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File "scripts\logon.ps1" `
-  -SapLogonPath "C:\Program Files\SAP\FrontEnd\SAPgui\saplogon.exe"
+  -SapLogonPath "<SAP_GUI_INSTALL_PATH>\saplogon.exe"
 ```
 
 Disable fallback when organizational policy prohibits command-line password exposure:

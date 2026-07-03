@@ -56,7 +56,7 @@ Displayed titles, button captions, messages, and OCR are excluded from selectors
 Open the problematic dialog manually, then run:
 
 ```powershell
-python scripts/mb5b_export.py --inspect-ui --output-dir "C:\work\diagnostics"
+python scripts/mb5b_export.py --inspect-ui --output-dir "<LOCAL_WORKSPACE>\diagnostics"
 ```
 
 The command does not click the UI. It writes `ui-tree.json` and screenshots for visible windows. Treat these files as potentially sensitive because titles may include local paths or SAP context.

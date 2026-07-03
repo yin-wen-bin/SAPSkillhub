@@ -20,10 +20,10 @@ Use the bundled VBScript as the starting point for SE38 program source downloads
 ```powershell
 cscript //nologo scripts\se38_export.vbs `
   /program:SAPLSE16N `
-  /out:"C:\work\abap\SAPLSE16N.abap"
+  /out:"<LOCAL_WORKSPACE>\abap\SAPLSE16N.abap"
 ```
 
-The source recording came from `D:\Skills\sap-se38-export\se38_export.vbs`, where the program was hard-coded as `SAPLSE16N` and the output directory as `D:\Skills\sap-se38-export`. The bundled script requires these values as parameters instead.
+The source recording came from `<LOCAL_SKILL_PATH>\sap-se38-export\se38_export.vbs`, where the program was hard-coded as `SAPLSE16N` and the output directory as `<LOCAL_SKILL_PATH>\sap-se38-export`. The bundled script requires these values as parameters instead.
 
 ## Parameters
 

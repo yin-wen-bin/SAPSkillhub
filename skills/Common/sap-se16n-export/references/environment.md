@@ -12,7 +12,7 @@ This skill does not support SAP GUI for HTML, browser-based Fiori apps, or SAP s
 
 ## Source Script Boundary
 
-`scripts/se16n_export.vbs` is based on the recorded script from `D:\Skills\sap-se16n-export\se16n_export.vbs`. It controls:
+`scripts/se16n_export.vbs` is based on the recorded script from `<LOCAL_SKILL_PATH>\sap-se16n-export\se16n_export.vbs`. It controls:
 
 - `/nse16n` navigation
 - table input through `wnd[0]/usr/ctxtGD-TAB`
@@ -46,7 +46,7 @@ Use the `sap-mb5b-export` approach as the pattern:
 3. Run a low-hit validation export:
 
    ```powershell
-   cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"C:\work\se16n-test" /file:"mara.xlsx" /securitytimeout:60
+   cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"<LOCAL_WORKSPACE>\se16n-test" /file:"mara.xlsx" /securitytimeout:60
    ```
 
 4. Open the workbook and confirm the table content is expected.

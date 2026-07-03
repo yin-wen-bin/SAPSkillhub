@@ -9,6 +9,7 @@ import {
   ShoppingCart,
 } from "@lucide/astro";
 import { homePath } from "../lib/urls";
+import { contributionGuideUrl } from "../lib/siteConfig";
 import { MODULES, type Locale, type SapModule } from "../lib/types";
 
 interface Props {
@@ -64,7 +65,7 @@ const icons = {
     </ul>
   </nav>
   <div class="sidebar-footer">
-    <a href="https://github.com/yin-wen-bin/SAPSkillhub/blob/main/README.md" target="_blank" rel="noreferrer">
+    <a href={contributionGuideUrl} target="_blank" rel="noreferrer">
       {locale === "zh" ? "贡献指南" : "Contribute"}
     </a>
   </div>

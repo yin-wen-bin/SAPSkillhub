@@ -18,7 +18,7 @@ systems:
 
 This skill automates transaction SE16N in SAP GUI for Windows. It uses `scripts/se16n_export.vbs` to open a table, set `Max. no. of hits`, execute the query, and save the ALV result as an Excel workbook through the XXL export flow. When a standard SAP GUI Scripting security prompt appears at startup, `scripts/sap_security_prompt_helper.ps1` clicks the standard `OK` control automatically.
 
-The script defaults mirror the source script at `D:\Skills\sap-se16n-export\se16n_export.vbs`: export `MARA` to `D:\Skills\sap-se16n-export\mara.xlsx` with max hits set to `2147483647`.
+The script defaults mirror the source script at `<LOCAL_SKILL_PATH>\sap-se16n-export\se16n_export.vbs`: export `MARA` to `<LOCAL_SKILL_PATH>\sap-se16n-export\mara.xlsx` with max hits set to `2147483647`.
 
 ## Use Cases
 
@@ -44,7 +44,7 @@ Start with a low-hit validation export:
 cscript //nologo scripts\se16n_export.vbs `
   /table:MARA `
   /maxhits:100 `
-  /outdir:"C:\work\se16n-test" `
+  /outdir:"<LOCAL_WORKSPACE>\se16n-test" `
   /file:"mara.xlsx" `
   /securitytimeout:60
 ```
@@ -55,11 +55,11 @@ After confirming the workbook, increase `/maxhits` or switch to the target busin
 cscript //nologo scripts\se16n_export.vbs `
   /table:MARC `
   /maxhits:50000 `
-  /outdir:"C:\work\se16n" `
+  /outdir:"<LOCAL_WORKSPACE>\se16n" `
   /file:"marc.xlsx"
 ```
 
-When no arguments are supplied, the script uses the source VBS defaults: `MARA`, `2147483647`, `D:\Skills\sap-se16n-export`, and `mara.xlsx`.
+When no arguments are supplied, the script uses the source VBS defaults: `MARA`, `2147483647`, `<LOCAL_SKILL_PATH>\sap-se16n-export`, and `mara.xlsx`.
 
 ## Inputs
 
@@ -67,7 +67,7 @@ When no arguments are supplied, the script uses the source VBS defaults: `MARA`,
 | --- | --- | --- |
 | `/table` | No | SE16N table name. Defaults to `MARA`; the script uppercases it. |
 | `/maxhits` | No | Value written to `GD-MAX_LINES`. Defaults to `2147483647`. |
-| `/outdir` | No | Output directory. Defaults to `D:\Skills\sap-se16n-export`; the script creates it when missing. |
+| `/outdir` | No | Output directory. Defaults to `<LOCAL_SKILL_PATH>\sap-se16n-export`; the script creates it when missing. |
 | `/file` | No | Output XLSX filename. Defaults from the table name; `.xlsx` is appended when no extension is supplied. |
 | `/securityhelper` | No | Enables the SAP GUI Scripting security prompt helper. Defaults to `true`; set to `false` for manual confirmation. |
 | `/securitytimeout` | No | Background polling window for the helper, in seconds. Defaults to `60`. |
@@ -95,7 +95,7 @@ When no arguments are supplied, the script uses the source VBS defaults: `MARA`,
 Export the first 100 `MARA` rows to a test directory:
 
 ```powershell
-cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"C:\work\se16n-test" /file:"mara.xlsx"
+cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"<LOCAL_WORKSPACE>\se16n-test" /file:"mara.xlsx"
 ```
 
 After confirming that the test workbook opens and contains the expected data, run the production export with the target table and hit count.

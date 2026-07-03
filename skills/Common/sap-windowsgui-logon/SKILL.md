@@ -24,7 +24,7 @@ Use the bundled PowerShell launcher backed by `scripts/logon.py`. It selects bet
    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/logon.ps1
    ```
 
-6. Add `-ConfigPath "C:\path\config.json"` only for a non-default configuration. Add `-SapLogonPath` or `-SapShcutPath` only when the executables cannot be discovered automatically.
+6. Add `-ConfigPath "<LOCAL_CONFIG_PATH>\config.json"` only for a non-default configuration. Add `-SapLogonPath` or `-SapShcutPath` only when the executables cannot be discovered automatically.
 7. Use the automatic SAP Shortcut fallback by default. Add `-DisableSapshcutFallback` only when the user rejects command-line password exposure.
 8. Report the selected method and whether authentication was verified. Never expose the password or the full configuration content.
 

@@ -1,10 +1,10 @@
 # SAP Skill Hub Design QA
 
-- Source visual truth: `C:\Users\Fujitsu\.codex\generated_images\019ef32a-2180-7cf0-b8b7-13e760b05e84\exec-41af3de5-2e97-45f7-a5e6-77b179e88aa8.png`
-- Implementation screenshot: `D:\SAPskillhub\output\playwright\home-en-desktop-final.png`
-- Mobile screenshot: `D:\SAPskillhub\output\playwright\home-zh-mobile.png`
-- Full-view comparison: `D:\SAPskillhub\output\playwright\design-compare.png`
-- Focused comparison: `D:\SAPskillhub\output\playwright\design-compare-focus.png`
+- Source visual truth: `<LOCAL_GENERATED_IMAGE_PATH>`
+- Implementation screenshot: `<LOCAL_WORKSPACE>\output\playwright\home-en-desktop-final.png`
+- Mobile screenshot: `<LOCAL_WORKSPACE>\output\playwright\home-zh-mobile.png`
+- Full-view comparison: `<LOCAL_WORKSPACE>\output\playwright\design-compare.png`
+- Focused comparison: `<LOCAL_WORKSPACE>\output\playwright\design-compare-focus.png`
 - Viewport: 1440 × 1024 desktop; 390 × 844 mobile
 - State: English homepage with all modules selected and one real MM skill; Chinese mobile homepage and empty filter state also checked
 

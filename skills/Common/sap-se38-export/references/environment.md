@@ -12,7 +12,7 @@ This skill does not support SAP GUI for HTML, browser-based Fiori apps, or SAP s
 
 ## Source Script Boundary
 
-`scripts/se38_export.vbs` is based on the recorded script from `D:\Skills\sap-se38-export\se38_export.vbs`. It controls:
+`scripts/se38_export.vbs` is based on the recorded script from `<LOCAL_SKILL_PATH>\sap-se38-export\se38_export.vbs`. It controls:
 
 - `/nse38` navigation
 - program input through `wnd[0]/usr/ctxtRS38M-PROGRAMM`
@@ -45,7 +45,7 @@ Use the `sap-mb5b-export` approach as the pattern:
 3. Run a validation export for a known small program:
 
    ```powershell
-   cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"C:\work\se38-test\SAPLSE16N.abap"
+   cscript //nologo scripts\se38_export.vbs /program:SAPLSE16N /out:"<LOCAL_WORKSPACE>\se38-test\SAPLSE16N.abap"
    ```
 
 4. Open the downloaded file and confirm the source content is expected.

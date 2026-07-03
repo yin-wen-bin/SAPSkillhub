@@ -1,6 +1,6 @@
 ' Download an ABAP program source file through SAP GUI Scripting and SE38.
 ' Usage:
-'   cscript //nologo se38_export.vbs /program:SAPLSE16N /out:"C:\work\abap\SAPLSE16N.abap"
+'   cscript //nologo se38_export.vbs /program:SAPLSE16N /out:"<LOCAL_WORKSPACE>\abap\SAPLSE16N.abap"
 Option Explicit
 
 Dim programName

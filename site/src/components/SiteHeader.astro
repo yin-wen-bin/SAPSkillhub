@@ -1,5 +1,6 @@
 ---
 import { FolderGit2, Languages } from "@lucide/astro";
+import { repositoryUrl } from "../lib/siteConfig";
 import { homePath } from "../lib/urls";
 import type { Locale } from "../lib/types";
 
@@ -18,7 +19,7 @@ const alternateLocale: Locale = locale === "zh" ? "en" : "zh";
   <nav class="header-actions" aria-label={locale === "zh" ? "全局导航" : "Global navigation"}>
     <a
       class="header-link"
-      href="https://github.com/yin-wen-bin/SAPSkillhub"
+      href={repositoryUrl}
       target="_blank"
       rel="noreferrer"
       aria-label="GitHub"

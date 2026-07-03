@@ -57,7 +57,7 @@ Run the environment check first:
 
 ```powershell
 python scripts/check_environment.py `
-  --input "C:\work\storage-locations.xlsx" `
+  --input "<LOCAL_WORKSPACE>\storage-locations.xlsx" `
   --require-sap
 ```
 
@@ -65,7 +65,7 @@ Preview all targets and output paths without operating SAP:
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\storage-locations.xlsx" `
+  --input "<LOCAL_WORKSPACE>\storage-locations.xlsx" `
   --date 2026-02-28 `
   --dry-run
 ```
@@ -74,7 +74,7 @@ On a new SAP GUI environment, run one live target before the complete batch:
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\storage-locations.xlsx" `
+  --input "<LOCAL_WORKSPACE>\storage-locations.xlsx" `
   --date 2026-02-28 `
   --limit 1
 ```
@@ -120,9 +120,9 @@ Export all targets to a separate test directory:
 
 ```powershell
 python scripts/mb5b_export.py `
-  --input "C:\work\storage-locations.xlsx" `
+  --input "<LOCAL_WORKSPACE>\storage-locations.xlsx" `
   --date 2026-02-28 `
-  --output-dir "C:\work\mb5b-test"
+  --output-dir "<LOCAL_WORKSPACE>\mb5b-test"
 ```
 
 If the run returns exit code `2`, keep the successful workbooks and use the log to identify only the failed plant/storage pairs. Do not rerun successful targets with `--overwrite` unless replacement is intended.

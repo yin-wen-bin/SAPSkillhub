@@ -21,12 +21,12 @@ Use the bundled VBScript as the starting point for SE16N exports. Keep SAP GUI o
 cscript //nologo scripts\se16n_export.vbs `
   /table:MARA `
   /maxhits:100 `
-  /outdir:"C:\work\se16n" `
+  /outdir:"<LOCAL_WORKSPACE>\se16n" `
   /file:"mara.xlsx" `
   /securitytimeout:60
 ```
 
-Defaults match the source script in `D:\Skills\sap-se16n-export`: `/table:MARA`, `/maxhits:2147483647`, `/outdir:"D:\Skills\sap-se16n-export"`, and `/file:"mara.xlsx"`.
+Defaults match the source script in `<LOCAL_SKILL_PATH>\sap-se16n-export`: `/table:MARA`, `/maxhits:2147483647`, `/outdir:"<LOCAL_SKILL_PATH>\sap-se16n-export"`, and `/file:"mara.xlsx"`.
 
 ## Parameters
 

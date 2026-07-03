@@ -1,10 +1,12 @@
 import { defineConfig } from "astro/config";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+const siteOrigin = process.env.PUBLIC_SITE_ORIGIN ?? "https://example.github.io";
+const productionBase = process.env.PUBLIC_SITE_BASE ?? "/SAPSkillhub";
 
 export default defineConfig({
-  site: "https://yin-wen-bin.github.io",
-  base: isDevelopment ? "/" : "/SAPSkillhub",
+  site: siteOrigin,
+  base: isDevelopment ? "/" : productionBase,
   output: "static",
   trailingSlash: "always",
 });

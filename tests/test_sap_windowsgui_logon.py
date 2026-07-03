@@ -28,7 +28,7 @@ class SapWindowsGuiLogonTests(unittest.TestCase):
             "Description": "Test DEV",
             "Client": "100",
             "User": "TEST_USER",
-            "Password": "p@ ss&word",
+            "Password": "<SAP_PASSWORD>",
             "LogonLanguage": "EN",
         }
 
@@ -56,14 +56,14 @@ class SapWindowsGuiLogonTests(unittest.TestCase):
 
     def test_build_sapshcut_command_uses_argument_list_without_shell(self) -> None:
         command = logon.build_sapshcut_command(
-            Path(r"C:\Program Files\SAP\FrontEnd\SAPGUI\sapshcut.exe"),
+            Path(r"<SAP_GUI_INSTALL_PATH>\sapshcut.exe"),
             "S4H",
             self.configuration(),
         )
 
         self.assertEqual(command[1], "-system=S4H")
         self.assertIn("-client=100", command)
-        self.assertIn("-pw=p@ ss&word", command)
+        self.assertIn("-pw=<SAP_PASSWORD>", command)
         self.assertEqual(len(command), 6)
 
     def test_compatible_mode_falls_back_only_for_primary_unavailable(self) -> None:

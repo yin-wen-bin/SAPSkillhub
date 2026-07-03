@@ -18,7 +18,7 @@ systems:
 
 本 Skill 用于自动操作 Windows 版 SAP GUI 中的 SE16N 事务。它基于 `scripts/se16n_export.vbs` 打开指定表，写入 `Max. no. of hits`，执行查询，并通过 ALV 的 XXL 导出流程保存为 Excel 工作簿。启动时如出现标准 SAP GUI Scripting 安全提示，`scripts/sap_security_prompt_helper.ps1` 会自动点击标准 `OK` 控件。
 
-脚本默认行为来自 `D:\Skills\sap-se16n-export\se16n_export.vbs`，默认导出 `MARA` 到 `D:\Skills\sap-se16n-export\mara.xlsx`，最大命中数为 `2147483647`。
+脚本默认行为来自 `<LOCAL_SKILL_PATH>\sap-se16n-export\se16n_export.vbs`，默认导出 `MARA` 到 `<LOCAL_SKILL_PATH>\sap-se16n-export\mara.xlsx`，最大命中数为 `2147483647`。
 
 ## 适用场景
 
@@ -44,7 +44,7 @@ systems:
 cscript //nologo scripts\se16n_export.vbs `
   /table:MARA `
   /maxhits:100 `
-  /outdir:"C:\work\se16n-test" `
+  /outdir:"<LOCAL_WORKSPACE>\se16n-test" `
   /file:"mara.xlsx" `
   /securitytimeout:60
 ```
@@ -55,11 +55,11 @@ cscript //nologo scripts\se16n_export.vbs `
 cscript //nologo scripts\se16n_export.vbs `
   /table:MARC `
   /maxhits:50000 `
-  /outdir:"C:\work\se16n" `
+  /outdir:"<LOCAL_WORKSPACE>\se16n" `
   /file:"marc.xlsx"
 ```
 
-如果不传参数，脚本使用源 VBS 的默认值：`MARA`、`2147483647`、`D:\Skills\sap-se16n-export` 和 `mara.xlsx`。
+如果不传参数，脚本使用源 VBS 的默认值：`MARA`、`2147483647`、`<LOCAL_SKILL_PATH>\sap-se16n-export` 和 `mara.xlsx`。
 
 ## 输入
 
@@ -67,7 +67,7 @@ cscript //nologo scripts\se16n_export.vbs `
 | --- | --- | --- |
 | `/table` | 否 | SE16N 表名，默认 `MARA`；脚本会转为大写。 |
 | `/maxhits` | 否 | 写入 `GD-MAX_LINES` 的最大命中数，默认 `2147483647`。 |
-| `/outdir` | 否 | 输出目录，默认 `D:\Skills\sap-se16n-export`；缺失时脚本会创建。 |
+| `/outdir` | 否 | 输出目录，默认 `<LOCAL_SKILL_PATH>\sap-se16n-export`；缺失时脚本会创建。 |
 | `/file` | 否 | 输出 XLSX 文件名，默认按表名生成；未提供扩展名时追加 `.xlsx`。 |
 | `/securityhelper` | 否 | 是否启动 SAP GUI Scripting 安全提示 helper，默认 `true`；设为 `false` 时由用户手动点击。 |
 | `/securitytimeout` | 否 | helper 后台监听秒数，默认 `60`。 |
@@ -95,7 +95,7 @@ cscript //nologo scripts\se16n_export.vbs `
 导出 `MARA` 前 100 行到测试目录：
 
 ```powershell
-cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"C:\work\se16n-test" /file:"mara.xlsx"
+cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"<LOCAL_WORKSPACE>\se16n-test" /file:"mara.xlsx"
 ```
 
 在确认测试文件可打开且内容正确后，再按目标表和目标命中数执行正式导出。

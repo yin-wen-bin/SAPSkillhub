@@ -80,7 +80,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File "scripts\logon.ps1" `
-  -ConfigPath "C:\secure\sap-logon.json"
+  -ConfigPath "<LOCAL_CONFIG_PATH>\sap-logon.json"
 ```
 
 ## 输入
@@ -146,7 +146,7 @@ SAP Logon 无法自动发现时：
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File "scripts\logon.ps1" `
-  -SapLogonPath "C:\Program Files\SAP\FrontEnd\SAPgui\saplogon.exe"
+  -SapLogonPath "<SAP_GUI_INSTALL_PATH>\saplogon.exe"
 ```
 
 如果公司策略禁止密码进入进程命令行，可关闭回退：
