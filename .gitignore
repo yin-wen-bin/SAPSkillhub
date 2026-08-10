@@ -15,3 +15,10 @@ site/.astro/
 site/.npm-cache/
 .playwright-cli/
 /skills/Common/sap-windowsgui-logon/assets/config.json
+
+# Abandoned GUI-only FBL prototypes (not suitable for portable SAP landscapes)
+/skills/FI/sap-fbl1n-export/
+/skills/FI/sap-fbl3n-export/
+/lib/sapskillhub_export/fbl.py
+/tests/test_fbl_entrypoints.py
+/tests/test_fbl_gui.py

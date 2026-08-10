@@ -1,101 +1,53 @@
 ---
-title: SAP SE16N Table Export
-summary: Run SE16N through SAP GUI Scripting, set the maximum hit count, and export the ALV result to Excel.
-tags:
-  - SE16N
-  - table data
-  - Excel
-  - SAP GUI automation
-transactions:
-  - SE16N
-systems:
-  - SAP ERP
-  - SAP S/4HANA
-  - SAP GUI for Windows
+title: SAP SE16N Safe Table Export
+summary: Filter, validate, chunk, merge, and evidence SAP SE16N exports through SAP GUI for Windows.
+tags: [SE16N, table data, chunking, Excel, SAP GUI automation]
+transactions: [SE16N]
+systems: [SAP ERP, SAP S/4HANA, SAP GUI for Windows]
 ---
 
 ## Overview
 
-This skill automates transaction SE16N in SAP GUI for Windows. It uses `scripts/se16n_export.vbs` to open a table, set `Max. no. of hits`, execute the query, and save the ALV result as an Excel workbook through the XXL export flow. When a standard SAP GUI Scripting security prompt appears at startup, `scripts/sap_security_prompt_helper.ps1` clicks the standard `OK` control automatically.
-
-The script defaults mirror the source script at `<LOCAL_SKILL_PATH>\sap-se16n-export\se16n_export.vbs`: export `MARA` to `<LOCAL_SKILL_PATH>\sap-se16n-export\mara.xlsx` with max hits set to `2147483647`.
+The Python entry accepts JSON selections or repeatable CLI filters, defaults to a 100-row validation run, and uses 50,001 rows as the full-mode overflow probe. Successful leaf chunks are merged into canonical XLSX and CSV outputs with a manifest and SHA-256 evidence. The VBS file remains a compatibility wrapper.
 
 ## Use Cases
 
-- Export an SE16N table result to an XLSX workbook.
-- Validate SAP GUI Scripting, ALV export, and save-path behavior with a low hit count.
-- Repeat the export after changing the table, max-hit value, output directory, or filename.
-- Diagnose SE16N export compatibility after SAP GUI language, theme, version, or Windows display-scale changes.
-- Design helper handling for Windows dialogs that are outside the VBScript control range.
+- Validate a table and filter set with low impact.
+- Export a bounded large table through audited recursive chunks.
+- Produce reproducible selection, row-count, merge, and hash evidence.
 
 ## Prerequisites
 
-- Windows with SAP GUI for Windows installed.
-- SAP GUI Scripting enabled on both the client and server.
-- An authenticated SAP session with authorization to run SE16N, read the target table, and export ALV results.
-- Write access to the output directory, with the target workbook closed in Excel or other spreadsheet tools.
-- Review `references/environment.md` before the first live run on a machine or after SAP GUI, Windows, theme, language, or display-scale changes.
+Use Windows, an authenticated SAP GUI session, SAP GUI Scripting, Python 3.12, `openpyxl==3.1.5`, and `pywin32`. Review `references/environment.md` and adapt `references/control-profile.json` after passive control inspection when the system screen differs.
 
 ## Usage
 
-Start with a low-hit validation export:
-
 ```powershell
-cscript //nologo scripts\se16n_export.vbs `
-  /table:MARA `
-  /maxhits:100 `
-  /outdir:"<LOCAL_WORKSPACE>\se16n-test" `
-  /file:"mara.xlsx" `
-  /securitytimeout:60
+python scripts\se16n_export.py --table BSIK --selection-file .\bsik.json --mode full --output-dir C:\Exports --file bsik
 ```
 
-After confirming the workbook, increase `/maxhits` or switch to the target business table:
+Validation is the default:
 
 ```powershell
-cscript //nologo scripts\se16n_export.vbs `
-  /table:MARC `
-  /maxhits:50000 `
-  /outdir:"<LOCAL_WORKSPACE>\se16n" `
-  /file:"marc.xlsx"
+python scripts\se16n_export.py --table MARA --where "MATNR=10000001,10000002" --exclude "MTART=DIEN" --output-dir C:\Exports
 ```
-
-When no arguments are supplied, the script uses the source VBS defaults: `MARA`, `2147483647`, `<LOCAL_SKILL_PATH>\sap-se16n-export`, and `mara.xlsx`.
 
 ## Inputs
 
-| Input | Required | Description |
-| --- | --- | --- |
-| `/table` | No | SE16N table name. Defaults to `MARA`; the script uppercases it. |
-| `/maxhits` | No | Value written to `GD-MAX_LINES`. Defaults to `2147483647`. |
-| `/outdir` | No | Output directory. Defaults to `<LOCAL_SKILL_PATH>\sap-se16n-export`; the script creates it when missing. |
-| `/file` | No | Output XLSX filename. Defaults from the table name; `.xlsx` is appended when no extension is supplied. |
-| `/securityhelper` | No | Enables the SAP GUI Scripting security prompt helper. Defaults to `true`; set to `false` for manual confirmation. |
-| `/securitytimeout` | No | Background polling window for the helper, in seconds. Defaults to `60`. |
+JSON schema version 1 supports `filters`, `columns`, `sort`, optional `chunk`, and `key_fields`. Filters support `EQ/NE/BT/NB/GE/GT/LE/LT/CP/NP`. Same-field includes are OR alternatives, excludes subtract matches, and different fields combine with AND. CLI shortcuts accept `FIELD=value`, `FIELD=low..high`, and comma-separated values.
+
+Full mode requires bounded policies. BSEG, BSIK, and BSIS require company code and fiscal year; EKBE requires posting-date bounds. Unknown tables require explicit chunk field, type, low/high, and complete key fields.
 
 ## Outputs
 
-| Output | Naming contract | Description |
-| --- | --- | --- |
-| Excel workbook | `<outdir>\<file>` | SE16N ALV result saved through XXL export. |
-| Console output | Standard output | Prints the target path after the export is submitted. |
-| Local diagnostics | Manual or helper-defined directory | Used only when investigating windows outside the script control range; do not commit these files. |
+The run writes `<name>.part-NNNN.xlsx`, `<name>.xlsx`, `<name>.csv`, `<name>.manifest.json`, and probe workbooks used for overflow decisions. The manifest records SAP identity, requested and accepted selection data, chunk ranges and counts, layout, timestamps, status, and hashes.
 
 ## Limitations
 
-- The skill supports SAP GUI for Windows only; it does not automate SAP GUI for HTML or Fiori pages.
-- The VBScript relies on SAP GUI Scripting technical control IDs and does not use fixed coordinates, OCR, or translated button text.
-- The current script does not fill SE16N selection criteria. Add field-specific control logic only after inspecting the target system controls.
-- `2147483647` is the technical maximum, but large exports may still fail because of runtime, memory, authorization, ALV, SAP frontend, or Excel limits.
-- Only known SAP GUI Scripting security prompts are auto-confirmed, and only after both the prompt text and standard OK control ID match.
-- If overwrite confirmations, file locks, Excel dialogs, or unknown security prompts appear, do not guess button meanings. Follow `references/environment.md` and the language-independent window-handling model from `sap-mb5b-export`.
-- Use a fresh output filename unless the user explicitly approves replacement.
+Only SAP GUI for Windows is supported. Control IDs vary by SAP release and customer screen variant. Full exports are refused without a provable chunk range and key. Failure preserves evidence but never declares completeness. Excel outputs use multiple worksheets beyond 1,048,575 data rows.
 
 ## Examples
 
-Export the first 100 `MARA` rows to a test directory:
-
-```powershell
-cscript //nologo scripts\se16n_export.vbs /table:MARA /maxhits:100 /outdir:"<LOCAL_WORKSPACE>\se16n-test" /file:"mara.xlsx"
+```json
+{"schema_version": 1, "filters": [{"field": "BUKRS", "sign": "I", "option": "EQ", "low": "1710"}, {"field": "GJAHR", "sign": "I", "option": "EQ", "low": "2026"}, {"field": "BELNR", "sign": "I", "option": "BT", "low": "0000000001", "high": "9999999999"}], "sort": ["BUKRS", "GJAHR", "BELNR", "BUZEI"]}
 ```
-
-After confirming that the test workbook opens and contains the expected data, run the production export with the target table and hit count.

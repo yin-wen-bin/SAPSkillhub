@@ -1,4 +1,6 @@
 interface:
-  display_name: "SAP SE16N Export"
-  short_description: "Export SAP SE16N table results to Excel"
-  default_prompt: "Use $sap-se16n-export to export an SAP SE16N table result to Excel from SAP GUI for Windows."
+  display_name: "SAP SE16N Safe Export"
+  short_description: "Validate and chunk SAP table exports"
+  default_prompt: "Use $sap-se16n-export to validate filters and safely export an SE16N table through SAP GUI for Windows."
+policy:
+  allow_implicit_invocation: true

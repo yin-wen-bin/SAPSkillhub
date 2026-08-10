@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "main_window": "wnd[0]",
+  "command": "wnd[0]/tbar[0]/okcd",
+  "table": "wnd[0]/usr/ctxtGD-TAB",
+  "maxhits": "wnd[0]/usr/txtGD-MAX_LINES",
+  "execute": "wnd[0]/tbar[1]/btn[8]",
+  "grid": "wnd[0]/shellcont/shell",
+  "selection_table": "wnd[0]/usr/subTAB_SUB:SAPLSE16N:0121/tblSAPLSE16NSELFIELDS_TC",
+  "selection_rows": {
+    "field": "wnd[0]/usr/subTAB_SUB:SAPLSE16N:0121/tblSAPLSE16NSELFIELDS_TC/txtGS_SELFIELDS-FIELDNAME[6,{row}]",
+    "low": "wnd[0]/usr/subTAB_SUB:SAPLSE16N:0121/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-LOW[2,{row}]",
+    "high": "wnd[0]/usr/subTAB_SUB:SAPLSE16N:0121/tblSAPLSE16NSELFIELDS_TC/ctxtGS_SELFIELDS-HIGH[3,{row}]",
+    "multiple": "wnd[0]/usr/subTAB_SUB:SAPLSE16N:0121/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,{row}]"
+  },
+  "multiple_selection": {
+    "accept": "wnd[1]/tbar[0]/btn[8]",
+    "rows": {
+      "sign": "wnd[1]/usr/tblSAPLSE16NSELECT_OPTIONS/cmbGS_OPTIONS-SIGN[0,{row}]",
+      "option": "wnd[1]/usr/tblSAPLSE16NSELECT_OPTIONS/cmbGS_OPTIONS-OPTION[1,{row}]",
+      "low": "wnd[1]/usr/tblSAPLSE16NSELECT_OPTIONS/ctxtGS_OPTIONS-LOW[2,{row}]",
+      "high": "wnd[1]/usr/tblSAPLSE16NSELECT_OPTIONS/ctxtGS_OPTIONS-HIGH[3,{row}]"
+    }
+  }
+}
