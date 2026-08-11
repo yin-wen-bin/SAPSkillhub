@@ -42,6 +42,8 @@ Full mode requires bounded policies. BSEG, BSIK, and BSIS require company code a
 
 The run writes `<name>.part-NNNN.xlsx`, `<name>.xlsx`, `<name>.csv`, `<name>.manifest.json`, and probe workbooks used for overflow decisions. The manifest records SAP identity, requested and accepted selection data, chunk ranges and counts, layout, timestamps, status, and hashes.
 
+For several tables, put CLI-equivalent fields in a JSON `jobs` array and run `python scripts\se16n_batch.py --batch-file batch.json`. Every job starts with `/nSE16N`. Completion waits for stable file size/mtime, readable content, and an idle SAP session; timeout never closes SAP GUI.
+
 ## Limitations
 
 Only SAP GUI for Windows is supported. Control IDs vary by SAP release and customer screen variant. Full exports are refused without a provable chunk range and key. Failure preserves evidence but never declares completeness. Excel outputs use multiple worksheets beyond 1,048,575 data rows.

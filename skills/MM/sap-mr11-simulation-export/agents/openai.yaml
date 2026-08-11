@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP MR11 Simulation Export"
+  short_description: "Export read-only SAP MR11 simulation evidence"
+  default_prompt: "Use $sap-mr11-simulation-export to run a safe MR11 simulation and export its evidence."

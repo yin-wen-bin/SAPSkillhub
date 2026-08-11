@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -22,6 +24,8 @@ from sapskillhub_export.core import (  # noqa: E402
     recursive_chunks,
     validate_chunk_coverage,
     write_manifest,
+    ExportCompletionTimeout,
+    wait_export_complete,
 )
 
 
@@ -36,6 +40,39 @@ def workbook(path: Path, headers: list[str], rows: list[list[object]]) -> None:
 
 
 class ExportCoreTests(unittest.TestCase):
+    def test_two_sequential_exports_wait_for_stable_file_and_idle_session(self):
+        class Session:
+            Busy = False
+
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("first.xlsx", "second.xlsx"):
+                target = Path(directory) / name
+
+                def writer(path=target):
+                    path.write_bytes(b"a")
+                    time.sleep(0.03)
+                    path.write_bytes(b"abcdef")
+
+                thread = threading.Thread(target=writer)
+                thread.start()
+                wait_export_complete(
+                    Session(), target, timeout=1, stable_for=0.05, poll_interval=0.01
+                )
+                thread.join()
+                self.assertEqual(target.stat().st_size, 6)
+
+    def test_created_file_with_busy_sap_returns_distinct_timeout(self):
+        class Session:
+            Busy = True
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "created.xlsx"
+            target.write_bytes(b"created-but-com-not-finished")
+            with self.assertRaisesRegex(ExportCompletionTimeout, "remains busy"):
+                wait_export_complete(
+                    Session(), target, timeout=0.08, stable_for=0.01, poll_interval=0.01
+                )
+
     def test_json_cli_and_filter_semantics(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "selection.json"

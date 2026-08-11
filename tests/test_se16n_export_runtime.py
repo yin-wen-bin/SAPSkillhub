@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,6 +13,14 @@ spec = importlib.util.spec_from_file_location("se16n_runtime", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(module)
+
+batch_spec = importlib.util.spec_from_file_location(
+    "se16n_batch_runtime",
+    ROOT / "skills/Common/sap-se16n-export/scripts/se16n_batch.py",
+)
+batch_module = importlib.util.module_from_spec(batch_spec)
+assert batch_spec and batch_spec.loader
+batch_spec.loader.exec_module(batch_module)
 
 
 class Control:
@@ -40,6 +50,15 @@ class Session:
 
     def FindById(self, control_id):
         return self.controls.setdefault(control_id, Control())
+
+
+class Window(Control):
+    def __init__(self):
+        super().__init__()
+        self.keys = []
+
+    def SendVKey(self, key):
+        self.keys.append(key)
 
 
 class Se16nRuntimeTests(unittest.TestCase):
@@ -114,6 +133,39 @@ class Se16nRuntimeTests(unittest.TestCase):
         chunked = module.with_chunk(selection, "BELNR", "0001", "4999")
         self.assertIn(module.Filter("BELNR", "E", "EQ", "0100"), chunked.filters)
         self.assertIn(module.Filter("BELNR", "I", "BT", "0001", "4999"), chunked.filters)
+
+    def test_reset_uses_current_transaction_only(self):
+        session = Session()
+        session.Busy = False
+        session.controls["wnd"] = Window()
+        profile = {"command": "cmd", "main_window": "wnd"}
+        module.reset_se16n_session(session, profile)
+        self.assertEqual(session.controls["cmd"].Text, "/nSE16N")
+        self.assertEqual(session.controls["wnd"].keys, [0])
+
+    def test_batch_runs_jobs_sequentially_and_stops_after_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "batch.json"
+            path.write_text(json.dumps({"jobs": [
+                {"table": "AFRU", "where": ["WERKS=1000"]},
+                {"table": "RESB", "where": ["WERKS=1000"]},
+                {"table": "MARA"},
+            ]}), encoding="utf-8")
+            calls = []
+
+            def fake_main(argv):
+                calls.append(argv)
+                return 2 if "RESB" in argv else 0
+
+            original = batch_module.export_main
+            batch_module.export_main = fake_main
+            try:
+                code = batch_module.main(["--batch-file", str(path)])
+            finally:
+                batch_module.export_main = original
+        self.assertEqual(code, 2)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--where", calls[0])
 
 
 if __name__ == "__main__":

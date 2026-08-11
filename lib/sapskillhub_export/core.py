@@ -18,6 +18,14 @@ IDENTIFIER = re.compile(r"^[A-Z][A-Z0-9_]{0,29}$")
 EXCEL_DATA_ROWS = 1_048_575
 
 
+class SapGuiBusyTimeout(TimeoutError):
+    """SAP GUI did not become idle before the bounded timeout."""
+
+
+class ExportCompletionTimeout(TimeoutError):
+    """An export file was missing, changing, locked, or SAP stayed busy."""
+
+
 @dataclass(frozen=True)
 class Filter:
     field: str
@@ -531,13 +539,62 @@ def load_control_profile(path: Path) -> dict[str, Any]:
     return payload
 
 
-def wait_ready(session: Any, timeout: int = 300) -> None:
+def wait_ready(session: Any, timeout: float = 300) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not bool(getattr(session, "Busy", False)):
             return
         time.sleep(0.25)
-    raise TimeoutError("SAP GUI remained busy")
+    raise SapGuiBusyTimeout("SAP GUI remained busy")
+
+
+def wait_export_complete(
+    session: Any,
+    output: Path,
+    *,
+    timeout: float = 120,
+    stable_for: float = 1.0,
+    poll_interval: float = 0.25,
+    clock: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
+    """Wait until a non-empty file is stable, readable, and SAP is idle.
+
+    File creation alone is insufficient because SAP GUI can create the XLSX
+    before the XXL writer and its COM call have completed.
+    """
+
+    deadline = clock() + timeout
+    last_signature: tuple[int, int] | None = None
+    stable_since: float | None = None
+    observed = "file was not created"
+    while clock() < deadline:
+        now = clock()
+        signature: tuple[int, int] | None = None
+        try:
+            stat = output.stat()
+            if stat.st_size > 0:
+                signature = (stat.st_size, stat.st_mtime_ns)
+                with output.open("rb") as stream:
+                    stream.read(1)
+        except (FileNotFoundError, OSError):
+            signature = None
+        if signature is None:
+            observed = "file is missing, empty, or locked"
+            last_signature = None
+            stable_since = None
+        elif signature != last_signature:
+            observed = "file is still changing"
+            last_signature = signature
+            stable_since = now
+        elif stable_since is not None and now - stable_since >= stable_for:
+            if not bool(getattr(session, "Busy", False)):
+                return
+            observed = "file is stable but SAP GUI remains busy"
+        sleeper(poll_interval)
+    raise ExportCompletionTimeout(
+        f"SAP export did not complete for {output}: {observed}"
+    )
 
 
 def status_error(session: Any) -> str:
@@ -550,7 +607,15 @@ def status_error(session: Any) -> str:
     return ""
 
 
-def export_alv(session: Any, grid_id: str, output: Path, overwrite: bool = False) -> None:
+def export_alv(
+    session: Any,
+    grid_id: str,
+    output: Path,
+    overwrite: bool = False,
+    *,
+    completion_timeout: float = 120,
+    stable_for: float = 1.0,
+) -> None:
     if output.exists() and not overwrite:
         raise FileExistsError(f"output exists; pass --overwrite: {output}")
     if output.exists():
@@ -563,10 +628,9 @@ def export_alv(session: Any, grid_id: str, output: Path, overwrite: bool = False
     set_text_verified(session, "wnd[1]/usr/ctxtDY_PATH", str(output.parent))
     set_text_verified(session, "wnd[1]/usr/ctxtDY_FILENAME", output.name)
     find_required(session, "wnd[1]/tbar[0]/btn[0]").Press()
-    wait_ready(session)
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if output.exists() and output.stat().st_size > 0:
-            return
-        time.sleep(0.25)
-    raise RuntimeError(f"SAP export did not create {output}")
+    wait_export_complete(
+        session,
+        output,
+        timeout=completion_timeout,
+        stable_for=stable_for,
+    )

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "transaction": "F.05",
+  "profile_status": "requires-target-system-validation",
+  "command": "wnd[0]/tbar[0]/okcd",
+  "main_window": "wnd[0]",
+  "fields": {
+    "company_code": "wnd[0]/usr/ctxtSO_BUKRS-LOW",
+    "valuation_key_date": "wnd[0]/usr/ctxtP_STICHT",
+    "valuation_area": "wnd[0]/usr/ctxtP_BWBER",
+    "valuation_method": "wnd[0]/usr/ctxtP_BWKEY",
+    "variant": "wnd[0]/usr/ctxtP_VARI",
+    "run_id": "wnd[0]/usr/ctxtP_LAUFI"
+  },
+  "modes": {
+    "existing-log": {
+      "required_true": [],
+      "required_false": ["wnd[0]/usr/chkP_UPDATE", "wnd[0]/usr/chkP_POST"],
+      "execute": "wnd[0]/tbar[1]/btn[8]"
+    },
+    "test-run": {
+      "required_true": ["wnd[0]/usr/chkP_TEST"],
+      "required_false": ["wnd[0]/usr/chkP_UPDATE", "wnd[0]/usr/chkP_POST"],
+      "execute": "wnd[0]/tbar[1]/btn[8]"
+    }
+  },
+  "forbidden_controls": ["wnd[0]/usr/chkP_UPDATE", "wnd[0]/usr/chkP_POST"],
+  "result_count": "wnd[0]/usr/txtRESULT_COUNT",
+  "grid": "wnd[0]/usr/cntlLOG_LIST/shellcont/shell",
+  "required_columns": ["RUN_ID", "RUN_MODE", "JOB_STATUS", "START_TIME", "END_TIME", "MESSAGE_TYPE", "MESSAGE", "WAERS", "VALUATION_AMOUNT", "ACCOUNTING_DOCUMENT"],
+  "amount_field": "VALUATION_AMOUNT",
+  "currency_field": "WAERS"
+}

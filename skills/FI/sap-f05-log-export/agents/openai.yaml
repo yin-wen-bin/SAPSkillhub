@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP F.05 Log Export"
+  short_description: "Export SAP F.05 test-run and log evidence"
+  default_prompt: "Use $sap-f05-log-export to export an existing F.05 log or run a non-posting test and capture evidence."

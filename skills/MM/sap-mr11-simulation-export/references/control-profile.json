@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "transaction": "MR11",
+  "profile_status": "requires-target-system-validation",
+  "command": "wnd[0]/tbar[0]/okcd",
+  "main_window": "wnd[0]",
+  "fields": {
+    "company_code": "wnd[0]/usr/ctxtSO_BUKRS-LOW",
+    "key_date": "wnd[0]/usr/ctxtP_STICHT",
+    "purchase_order_low": "wnd[0]/usr/ctxtSO_EBELN-LOW",
+    "purchase_order_high": "wnd[0]/usr/ctxtSO_EBELN-HIGH",
+    "age_days": "wnd[0]/usr/txtP_TAGE",
+    "tolerance_policy": "wnd[0]/usr/ctxtP_TOLER",
+    "variant": "wnd[0]/usr/ctxtP_VARI",
+    "max_hits": "wnd[0]/usr/txtP_MAX"
+  },
+  "modes": {
+    "simulation": {
+      "required_true": ["wnd[0]/usr/chkP_TEST"],
+      "required_false": ["wnd[0]/usr/chkP_BUCH", "wnd[0]/usr/chkP_UPDATE"],
+      "execute": "wnd[0]/tbar[1]/btn[8]"
+    }
+  },
+  "forbidden_controls": ["wnd[0]/usr/chkP_BUCH", "wnd[0]/usr/chkP_UPDATE"],
+  "result_count": "wnd[0]/usr/txtRESULT_COUNT",
+  "grid": "wnd[0]/usr/cntlRESULT_LIST/shellcont/shell",
+  "required_columns": ["EBELN", "EBELP", "MENGE_GR", "MENGE_IR", "DMBTR", "WAERS", "CAND_REASON", "EXCL_REASON", "GR_REF", "IR_REF", "MESSAGE"],
+  "amount_field": "DMBTR",
+  "currency_field": "WAERS"
+}

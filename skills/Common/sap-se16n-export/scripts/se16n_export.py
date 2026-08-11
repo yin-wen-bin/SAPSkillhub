@@ -142,25 +142,37 @@ def apply_filters(session: Any, filters: Sequence[Filter], profile: dict[str, An
         apply_multiple_selection(session, conditions, profile)
 
 
-def run_one(session: Any, table: str, selection: Selection, maxhits: int, output: Path, profile: dict[str, Any], overwrite: bool) -> int:
+def reset_se16n_session(session: Any, profile: dict[str, Any]) -> None:
+    """Reset only the current script-owned transaction; never close SAP GUI."""
     command = find_required(session, profile["command"])
     command.Text = "/nSE16N"
     find_required(session, profile["main_window"]).SendVKey(0)
-    wait_ready(session)
-    set_text_verified(session, profile["table"], table)
-    find_required(session, profile["main_window"]).SendVKey(0)
-    wait_ready(session)
-    apply_filters(session, selection.filters, profile)
-    set_text_verified(session, profile["maxhits"], str(maxhits))
-    find_required(session, profile["execute"]).Press()
-    wait_ready(session)
-    error = status_error(session)
-    if error:
-        raise RuntimeError(f"SAP status error: {error}")
-    grid = find_required(session, profile["grid"])
-    technical_columns = grid_column_ids(grid)
-    export_alv(session, profile["grid"], output, overwrite)
-    return rewrite_workbook_with_technical_headers(output, technical_columns)
+    wait_ready(session, timeout=30)
+
+
+def run_one(session: Any, table: str, selection: Selection, maxhits: int, output: Path, profile: dict[str, Any], overwrite: bool) -> int:
+    try:
+        reset_se16n_session(session, profile)
+        set_text_verified(session, profile["table"], table)
+        find_required(session, profile["main_window"]).SendVKey(0)
+        wait_ready(session)
+        apply_filters(session, selection.filters, profile)
+        set_text_verified(session, profile["maxhits"], str(maxhits))
+        find_required(session, profile["execute"]).Press()
+        wait_ready(session)
+        error = status_error(session)
+        if error:
+            raise RuntimeError(f"SAP status error: {error}")
+        grid = find_required(session, profile["grid"])
+        technical_columns = grid_column_ids(grid)
+        export_alv(session, profile["grid"], output, overwrite)
+        return rewrite_workbook_with_technical_headers(output, technical_columns)
+    except Exception as exc:
+        try:
+            reset_se16n_session(session, profile)
+        except Exception as cleanup_exc:
+            exc.add_note(f"SE16N transaction reset also failed: {cleanup_exc}")
+        raise
 
 
 def with_chunk(selection: Selection, field: str, low: str, high: str) -> Selection:
