@@ -10,3 +10,5 @@ Use `scripts/se16n_export.py`; keep `scripts/se16n_export.vbs` only as a legacy 
 Default to `--mode validate` and 100 rows. Use `--mode full` only with bounded, verified selection criteria. For BSEG, BSIK, BSIS, and EKBE enforce the audited policy. For any other large table require explicit `chunk.field/type/low/high` and `key_fields`; never guess a composite key.
 
 Use technical SAP GUI control IDs and verify each value by reading it back. Stop on missing controls, unknown dialogs, locked files, layout mismatches, duplicate keys, chunk gaps, or partial exports. Preserve successful part files and report partial/failed status without claiming a complete result.
+
+For sequential evidence jobs, use `scripts/se16n_batch.py`. Each job re-enters `/nSE16N`; failed jobs attempt to reset only that transaction and never close or kill SAP GUI. Export completion requires a non-empty readable file with stable size/mtime and an idle SAP session.

@@ -42,6 +42,8 @@ BSEG、BSIK、BSIS 要求公司代码和会计年度；EKBE 要求过账日期�
 
 生成 `<name>.part-NNNN.xlsx`、`<name>.xlsx`、`<name>.csv`、`<name>.manifest.json` 以及溢出探测工作簿。Manifest 记录 SAP 身份、请求和实际选择条件、分块范围与行数、布局、时间、状态和文件哈希。
 
+连续导出多个表时，把与 CLI 等价的字段放入 JSON `jobs` 数组，再运行 `python scripts\se16n_batch.py --batch-file batch.json`。每个任务先执行 `/nSE16N`；只有文件大小/修改时间稳定、文件可读且 SAP 会话空闲后才完成。超时不会关闭 SAP GUI。
+
 ## 限制与注意事项
 
 仅支持 SAP GUI for Windows。不同 SAP 版本和客户增强可能改变控件 ID。没有可证明的分块范围和完整键时拒绝正式大表导出。失败时保留证据，但不会声明完整。超过单表容量时 XLSX 自动使用多个工作表。
