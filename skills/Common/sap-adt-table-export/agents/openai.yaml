@@ -1,0 +1,4 @@
+interface:
+  display_name: "SAP ADT Table Export"
+  short_description: "Read-only bounded ADT evidence export"
+  default_prompt: "Use $sap-adt-table-export to run a strictly read-only bounded ADT table or CDS evidence query."
