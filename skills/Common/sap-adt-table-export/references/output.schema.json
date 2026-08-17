@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-adt-table-export/output.schema.json",
+  "title": "SAP ADT table export result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "skill_id", "run_id", "status", "read_only", "validated", "source", "scope", "rows", "row_count", "completeness", "validation_issues", "started_at", "completed_at", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-adt-table-export"},
+    "run_id": {"type": "string", "format": "uuid"},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "source": {"type": "object"},
+    "scope": {"type": "object"},
+    "rows": {"type": "array", "items": {"type": "object"}},
+    "row_count": {"type": "integer", "minimum": 0},
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "total_count_known", "truncated", "paging_complete", "reason"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "total_count_known": {"type": "boolean"},
+        "truncated": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    },
+    "validation_issues": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string"}, "message": {"type": "string"}}}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}}
+  }
+}
