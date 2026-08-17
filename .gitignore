@@ -8,6 +8,9 @@ MB5B_diagnostics_*/
 MB5B_ui_inspection_*/
 .artifacts/
 output/
+/.codex-tmp/
+/.codex_work/
+/tmp/
 design-qa.md
 site/node_modules/
 site/dist/
