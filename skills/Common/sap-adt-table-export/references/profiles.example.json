@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "default_profile": "quality-readonly",
   "profiles": {
     "quality-readonly": {
       "enabled": true,
@@ -7,7 +8,9 @@
       "system_id": "QAS",
       "language": "EN",
       "timeout_seconds": 30,
-      "env_file": "C:/protected/sap-adt.env",
+      "dynamic_objects": true,
+      "max_rows": 30000,
+      "page_size": 1000,
       "connection": {
         "base_url_env": "SAP_ADT_BASE_URL",
         "username_env": "SAP_ADT_USERNAME",
@@ -15,18 +18,6 @@
         "client_env": "SAP_ADT_CLIENT",
         "verify_ssl_env": "SAP_ADT_VERIFY_SSL",
         "ca_bundle_env": "SAP_ADT_CA_BUNDLE"
-      },
-      "deny_object_patterns": ["USR*", "SEC*"],
-      "deny_field_patterns": ["*PASSWORD*", "*PASSWD*", "*TOKEN*", "*SECRET*"],
-      "objects": {
-        "table:TSTC": {
-          "fields": {"TCODE": "string", "PGMNA": "string"},
-          "stable_key": ["TCODE"],
-          "bounded_filter_fields": ["TCODE"],
-          "max_rows": 100,
-          "page_size": 25,
-          "contiguous_key": false
-        }
       }
     }
   }
