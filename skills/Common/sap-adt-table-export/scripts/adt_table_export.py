@@ -21,17 +21,22 @@ from urllib.parse import quote, urlparse
 
 SKILL_ID = "sap-adt-table-export"
 SCHEMA_VERSION = 1
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+INTERNAL_ENV_FILE = SKILL_ROOT / ".env"
+INTERNAL_PROFILES_SETTING = "SAP_ADT_PROFILES_FILE"
 MINIMUM_DEPENDENCIES = {"requests": "2.31.0"}
 TESTED_DEPENDENCIES = {"requests": "2.34.2"}
 ENDPOINT = "/sap/bc/adt/datapreview/freestyle"
 TABLE_METADATA_PREFIX = "/sap/bc/adt/ddic/tables/"
 CDS_METADATA_PREFIX = "/sap/bc/adt/ddic/ddl/sources/"
+DATA_ELEMENT_PREFIX = "/sap/bc/adt/ddic/dataelements/"
 ACCEPT = "application/vnd.sap.adt.datapreview.table.v1+xml"
-IDENTIFIER = re.compile(r"^[A-Z][A-Z0-9_/]{0,59}$")
+DATA_ELEMENT_ACCEPT = "application/vnd.sap.adt.dataelements.v2+xml"
+OBJECT_IDENTIFIER = re.compile(r"^(?=.{1,60}$)(?:[A-Z][A-Z0-9_]*|/[A-Z0-9_]+/[A-Z0-9_/]+)$")
+FIELD_IDENTIFIER = re.compile(r"^[A-Z][A-Z0-9_]{0,59}$")
 PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$")
 ALLOWED_TOP_LEVEL = {
     "schema_version",
-    "connection_profile",
     "source_type",
     "object",
     "fields",
@@ -40,6 +45,10 @@ ALLOWED_TOP_LEVEL = {
     "max_rows",
 }
 FORBIDDEN_INPUT_KEYS = {
+    "connection_profile",
+    "profile",
+    "profiles",
+    "default_profile",
     "url",
     "host",
     "hostname",
@@ -61,6 +70,8 @@ FORBIDDEN_INPUT_KEYS = {
 ALLOWED_SOURCE_TYPES = {"table", "cds"}
 ALLOWED_FILTER_OPTIONS = {"EQ", "NE", "GT", "GE", "LT", "LE", "BT", "IN"}
 ALLOWED_FIELD_TYPES = {"string", "integer", "decimal", "date", "time", "boolean"}
+MAX_EXPORT_ROWS = 30000
+MAX_PREVIEW_PAGE_SIZE = 10000
 WRITE_TOKENS = {
     "INSERT",
     "UPDATE",
@@ -128,7 +139,6 @@ class Filter:
 
 @dataclass(frozen=True)
 class PreparedRequest:
-    profile_name: str
     source_type: str
     object_name: str
     fields: tuple[str, ...]
@@ -143,6 +153,24 @@ class PreparedRequest:
 class PreviewResult:
     columns: tuple[str, ...]
     rows: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ProfileSpec:
+    connection: Connection
+    objects: Mapping[str, ObjectSpec]
+    dynamic_objects: bool
+    max_rows: int
+    page_size: int
+    deny_object_patterns: tuple[str, ...]
+    deny_field_patterns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LiveMetadata:
+    fields: Mapping[str, FieldSpec]
+    stable_key: tuple[str, ...]
+    type_references: Mapping[str, str]
 
 
 def _utc_now() -> str:
@@ -167,13 +195,20 @@ def _walk_keys(value: Any) -> Iterable[str]:
             yield from _walk_keys(nested)
 
 
-def _read_json(path: Path, code: str = "unsupported_system") -> dict[str, Any]:
+def _read_json(
+    path: Path,
+    code: str = "unsupported_system",
+    *,
+    expose_path: bool = False,
+) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ExportError(code, f"Cannot read valid JSON from {path}: {exc}") from exc
+        message = f"Cannot read valid JSON from {path}: {exc}" if expose_path else "Internal ADT configuration is unavailable or invalid."
+        raise ExportError(code, message) from exc
     if not isinstance(data, dict):
-        raise ExportError(code, f"JSON root in {path} must be an object.")
+        message = f"JSON root in {path} must be an object." if expose_path else "Internal ADT configuration is unavailable or invalid."
+        raise ExportError(code, message)
     return data
 
 
@@ -182,7 +217,7 @@ def _load_env_file(path: Path) -> dict[str, str]:
     try:
         lines = path.read_text(encoding="utf-8-sig").splitlines()
     except OSError as exc:
-        raise ExportError("authentication_failed", f"Trusted environment file is unavailable: {exc}") from exc
+        raise ExportError("unsupported_system", "Internal ADT configuration is unavailable or invalid.") from exc
     for raw in lines:
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -197,11 +232,29 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def _require_env(name: str, values: Mapping[str, str]) -> str:
-    value = os.environ.get(name) or values.get(name, "")
+def _require_internal_value(name: str, values: Mapping[str, str]) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise ExportError("unsupported_system", "Internal ADT configuration is unavailable or invalid.")
+    value = values.get(name, "")
     if not value:
-        raise ExportError("authentication_failed", f"Trusted profile environment variable {name} is not set.")
+        raise ExportError("unsupported_system", "Internal ADT configuration is unavailable or invalid.")
     return value
+
+
+def _internal_path(value: str, base_directory: Path) -> Path:
+    candidate = Path(value.strip())
+    if not value.strip():
+        raise ExportError("unsupported_system", "Internal ADT configuration is unavailable or invalid.")
+    return candidate if candidate.is_absolute() else base_directory / candidate
+
+
+def load_internal_configuration(env_path: Path | None = None) -> tuple[dict[str, Any], dict[str, str]]:
+    """Load only Skill-owned configuration; never consult the caller's environment."""
+    env_path = env_path or INTERNAL_ENV_FILE
+    internal_values = _load_env_file(env_path)
+    profiles_path = _internal_path(internal_values.get(INTERNAL_PROFILES_SETTING, ""), env_path.parent)
+    profiles = _read_json(profiles_path, code="unsupported_system")
+    return profiles, internal_values
 
 
 def _parse_bool(value: Any, field: str) -> bool:
@@ -220,7 +273,7 @@ def _compile_field_specs(raw: Any) -> dict[str, FieldSpec]:
     result: dict[str, FieldSpec] = {}
     for raw_name, raw_spec in raw.items():
         name = str(raw_name).upper()
-        if not IDENTIFIER.fullmatch(name) or "/" in name:
+        if not FIELD_IDENTIFIER.fullmatch(name):
             raise ExportError("metadata_unavailable", f"Invalid trusted field identifier {raw_name!r}.")
         if isinstance(raw_spec, str):
             type_name = raw_spec.lower()
@@ -236,15 +289,18 @@ def _compile_field_specs(raw: Any) -> dict[str, FieldSpec]:
     return result
 
 
-def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connection, dict[str, ObjectSpec], list[str], list[str]]:
+def _resolve_profile(raw_profiles: dict[str, Any], internal_values: Mapping[str, str]) -> ProfileSpec:
     if raw_profiles.get("schema_version") != SCHEMA_VERSION:
         raise ExportError("unsupported_system", "Trusted profiles schema_version must be 1.")
+    name = raw_profiles.get("default_profile")
+    if not isinstance(name, str) or not PROFILE_NAME.fullmatch(name):
+        raise ExportError("unsupported_system", "Internal default ADT profile is unavailable or invalid.")
     profiles = raw_profiles.get("profiles")
     raw = profiles.get(name) if isinstance(profiles, dict) else None
     if not isinstance(raw, dict) or not raw.get("enabled", True):
-        raise ExportError("unsupported_system", f"Trusted connection profile {name!r} is unavailable or disabled.")
+        raise ExportError("unsupported_system", "Internal default ADT profile is unavailable or invalid.")
     if raw.get("supported", True) is not True:
-        raise ExportError("unsupported_system", f"Profile {name!r} is not approved for ADT Data Preview.")
+        raise ExportError("unsupported_system", "Internal default ADT profile is unavailable or invalid.")
 
     connection_raw = raw.get("connection")
     if not isinstance(connection_raw, dict):
@@ -252,23 +308,23 @@ def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connectio
     forbidden_direct = {"base_url", "username", "password", "token", "verify_ssl"}.intersection(connection_raw)
     if forbidden_direct:
         raise ExportError("unsupported_system", "Trusted profiles must reference environment variables, not inline credentials or URLs.")
-    env_values: dict[str, str] = {}
+    env_values = dict(internal_values)
     env_file = raw.get("env_file")
     if env_file:
-        env_values = _load_env_file(Path(os.path.expandvars(os.path.expanduser(str(env_file)))))
+        env_values.update(_load_env_file(_internal_path(str(env_file), SKILL_ROOT)))
 
-    base_url = _require_env(str(connection_raw.get("base_url_env", "")), env_values).rstrip("/")
-    username = _require_env(str(connection_raw.get("username_env", "")), env_values)
-    password = _require_env(str(connection_raw.get("password_env", "")), env_values)
-    client = _require_env(str(connection_raw.get("client_env", "")), env_values)
+    base_url = _require_internal_value(str(connection_raw.get("base_url_env", "")), env_values).rstrip("/")
+    username = _require_internal_value(str(connection_raw.get("username_env", "")), env_values)
+    password = _require_internal_value(str(connection_raw.get("password_env", "")), env_values)
+    client = _require_internal_value(str(connection_raw.get("client_env", "")), env_values)
     language_env = str(connection_raw.get("language_env", ""))
-    language = (os.environ.get(language_env) or env_values.get(language_env) or raw.get("language") or "EN") if language_env else str(raw.get("language", "EN"))
+    language = (env_values.get(language_env) or raw.get("language") or "EN") if language_env else str(raw.get("language", "EN"))
     verify_env = str(connection_raw.get("verify_ssl_env", ""))
-    verify_value: Any = os.environ.get(verify_env) or env_values.get(verify_env) if verify_env else True
+    verify_value: Any = env_values.get(verify_env) if verify_env else True
     if not _parse_bool(verify_value, "verify_ssl_env"):
         raise ExportError("tls_validation_failed", "TLS certificate verification cannot be disabled.")
     ca_env = str(connection_raw.get("ca_bundle_env", ""))
-    ca_bundle = os.environ.get(ca_env) or env_values.get(ca_env) if ca_env else ""
+    ca_bundle = env_values.get(ca_env) if ca_env else ""
     verify: bool | str = ca_bundle or True
 
     parsed_url = urlparse(base_url)
@@ -280,10 +336,15 @@ def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connectio
     if not 1 <= timeout_seconds <= 300:
         raise ExportError("unsupported_system", "Trusted timeout_seconds must be between 1 and 300.")
 
-    deny_objects = [str(item).upper() for item in raw.get("deny_object_patterns", [])]
-    deny_fields = [str(item).upper() for item in raw.get("deny_field_patterns", [])]
-    raw_objects = raw.get("objects")
-    if not isinstance(raw_objects, dict):
+    deny_objects = tuple(str(item).upper() for item in raw.get("deny_object_patterns", []))
+    deny_fields = tuple(str(item).upper() for item in raw.get("deny_field_patterns", []))
+    dynamic_objects = bool(raw.get("dynamic_objects", False))
+    profile_max_rows = int(raw.get("max_rows", MAX_EXPORT_ROWS if dynamic_objects else 1000))
+    profile_page_size = int(raw.get("page_size", min(profile_max_rows, 200)))
+    if not 1 <= profile_page_size <= min(profile_max_rows, MAX_PREVIEW_PAGE_SIZE) or not 1 <= profile_max_rows <= MAX_EXPORT_ROWS:
+        raise ExportError("metadata_unavailable", "Invalid profile row policy.")
+    raw_objects = raw.get("objects", {})
+    if not isinstance(raw_objects, dict) or (not dynamic_objects and not raw_objects):
         raise ExportError("metadata_unavailable", "Trusted profile object allowlist is missing.")
     objects: dict[str, ObjectSpec] = {}
     for raw_key, value in raw_objects.items():
@@ -292,7 +353,7 @@ def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connectio
         source_type, object_name = raw_key.split(":", 1)
         source_type = source_type.lower()
         object_name = object_name.upper()
-        if source_type not in ALLOWED_SOURCE_TYPES or not IDENTIFIER.fullmatch(object_name):
+        if source_type not in ALLOWED_SOURCE_TYPES or not OBJECT_IDENTIFIER.fullmatch(object_name):
             raise ExportError("metadata_unavailable", f"Invalid trusted object key {raw_key!r}.")
         fields = _compile_field_specs(value.get("fields"))
         stable_key = tuple(str(item).upper() for item in value.get("stable_key", []))
@@ -303,7 +364,7 @@ def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connectio
             raise ExportError("filter_not_allowed", f"Trusted object {raw_key} has no bounded filter policy.")
         max_rows = int(value.get("max_rows", 1000))
         page_size = int(value.get("page_size", min(max_rows, 200)))
-        if not 1 <= page_size <= max_rows <= 10000:
+        if not 1 <= page_size <= min(max_rows, MAX_PREVIEW_PAGE_SIZE) or not 1 <= max_rows <= MAX_EXPORT_ROWS:
             raise ExportError("metadata_unavailable", f"Invalid row policy for trusted object {raw_key}.")
         objects[f"{source_type}:{object_name}"] = ObjectSpec(
             source_type=source_type,
@@ -326,7 +387,15 @@ def _resolve_profile(raw_profiles: dict[str, Any], name: str) -> tuple[Connectio
         system_id=str(raw.get("system_id", name)).upper(),
         timeout_seconds=timeout_seconds,
     )
-    return connection, objects, deny_objects, deny_fields
+    return ProfileSpec(
+        connection=connection,
+        objects=objects,
+        dynamic_objects=dynamic_objects,
+        max_rows=profile_max_rows,
+        page_size=profile_page_size,
+        deny_object_patterns=deny_objects,
+        deny_field_patterns=deny_fields,
+    )
 
 
 def _typed_value(value: Any, field: str, spec: FieldSpec) -> Any:
@@ -374,7 +443,11 @@ def _typed_value(value: Any, field: str, spec: FieldSpec) -> Any:
     raise ExportError("metadata_unavailable", f"Unsupported type for field {field}.")
 
 
-def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> PreparedRequest:
+def _task_identity(
+    task: dict[str, Any],
+    profiles: dict[str, Any],
+    internal_values: Mapping[str, str],
+) -> tuple[str, str, ProfileSpec]:
     unknown = set(task).difference(ALLOWED_TOP_LEVEL)
     forbidden = set(_walk_keys(task)).intersection(FORBIDDEN_INPUT_KEYS)
     if unknown or forbidden:
@@ -382,18 +455,39 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
         raise ExportError("filter_not_allowed", f"Task input contains unsupported or security-sensitive keys: {', '.join(names)}.")
     if task.get("schema_version") != SCHEMA_VERSION:
         raise ExportError("unsupported_system", "Task input schema_version must be 1.")
-    profile_name = str(task.get("connection_profile", ""))
-    if not PROFILE_NAME.fullmatch(profile_name):
-        raise ExportError("unsupported_system", "connection_profile must name a trusted profile.")
-    connection, objects, deny_objects, deny_fields = _resolve_profile(profiles, profile_name)
+    profile = _resolve_profile(profiles, internal_values)
 
     source_type = str(task.get("source_type", "")).lower()
     object_name = str(task.get("object", "")).upper()
-    if source_type not in ALLOWED_SOURCE_TYPES or not IDENTIFIER.fullmatch(object_name):
+    if source_type not in ALLOWED_SOURCE_TYPES or not OBJECT_IDENTIFIER.fullmatch(object_name):
         raise ExportError("object_not_allowlisted", "source_type or object identifier is invalid.")
-    if any(fnmatch.fnmatchcase(object_name, pattern) for pattern in deny_objects):
+    if any(fnmatch.fnmatchcase(object_name, pattern) for pattern in profile.deny_object_patterns):
         raise ExportError("object_not_allowlisted", f"Object {object_name} is denied by trusted policy.")
-    object_spec = objects.get(f"{source_type}:{object_name}")
+    return source_type, object_name, profile
+
+
+def _prepare_request(
+    task: dict[str, Any],
+    profiles: dict[str, Any],
+    live_metadata: LiveMetadata | None = None,
+    internal_values: Mapping[str, str] | None = None,
+) -> PreparedRequest:
+    source_type, object_name, profile = _task_identity(task, profiles, internal_values or {})
+    object_spec = profile.objects.get(f"{source_type}:{object_name}")
+    if profile.dynamic_objects:
+        if live_metadata is None:
+            raise ExportError("metadata_unavailable", "Dynamic object mode requires live ADT DDIC metadata.")
+        if not live_metadata.stable_key:
+            raise ExportError("stable_paging_key_unavailable", "Live ADT metadata does not declare a stable key.")
+        object_spec = ObjectSpec(
+            source_type=source_type,
+            name=object_name,
+            fields=live_metadata.fields,
+            stable_key=live_metadata.stable_key,
+            bounded_filter_fields=frozenset(live_metadata.fields),
+            max_rows=profile.max_rows,
+            page_size=profile.page_size,
+        )
     if object_spec is None:
         raise ExportError("object_not_allowlisted", f"Object {source_type}:{object_name} is not allowlisted.")
 
@@ -407,7 +501,7 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
         spec = object_spec.fields.get(field)
         if spec is None:
             raise ExportError("field_unavailable", f"Field {field} is not available in trusted metadata.")
-        if spec.sensitive or any(fnmatch.fnmatchcase(field, pattern) for pattern in deny_fields):
+        if spec.sensitive or any(fnmatch.fnmatchcase(field, pattern) for pattern in profile.deny_field_patterns):
             raise ExportError("field_unavailable", f"Field {field} is denied as sensitive.")
 
     raw_filters = task.get("filters")
@@ -422,7 +516,7 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
             raise ExportError("filter_not_allowed", "A filter cannot contain both option and operator.")
         field = str(raw_filter.get("field", "")).upper()
         field_spec = object_spec.fields.get(field)
-        if field_spec is None or field_spec.sensitive or any(fnmatch.fnmatchcase(field, pattern) for pattern in deny_fields):
+        if field_spec is None or field_spec.sensitive or any(fnmatch.fnmatchcase(field, pattern) for pattern in profile.deny_field_patterns):
             raise ExportError("filter_not_allowed", f"Filter field {field or '<empty>'} is unavailable or denied.")
         sign = str(raw_filter.get("sign", "I")).upper()
         option = str(raw_filter.get("option", raw_filter.get("operator", "EQ"))).upper()
@@ -444,7 +538,7 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
             raw_values = (raw_value,)
         values = tuple(_typed_value(value, field, field_spec) for value in raw_values)
         filters.append(Filter(field=field, option=option, values=values, sign=sign))
-        if field in object_spec.bounded_filter_fields and option in {"EQ", "BT", "IN"}:
+        if sign == "I" and field in object_spec.bounded_filter_fields and option in {"EQ", "BT", "IN"}:
             bounded = True
     if not bounded:
         raise ExportError("filter_not_allowed", "A trusted bounded filter using EQ, BT, or IN is required.")
@@ -472,7 +566,6 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
     if isinstance(raw_max, bool) or not isinstance(raw_max, int) or not 1 <= raw_max <= object_spec.max_rows:
         raise ExportError("row_limit_reached", f"max_rows must be between 1 and {object_spec.max_rows}.")
     return PreparedRequest(
-        profile_name=profile_name,
         source_type=source_type,
         object_name=object_name,
         fields=fields,
@@ -480,7 +573,7 @@ def _prepare_request(task: dict[str, Any], profiles: dict[str, Any]) -> Prepared
         order_by=tuple(order_by),
         max_rows=raw_max,
         object_spec=object_spec,
-        connection=connection,
+        connection=profile.connection,
     )
 
 
@@ -615,7 +708,7 @@ def parse_preview_xml(xml_text: str) -> PreviewResult:
 
 
 class AdtClient:
-    """Narrow client exposing only the single allowlisted Data Preview endpoint."""
+    """Narrow client exposing only live metadata and read-only Data Preview endpoints."""
 
     def __init__(self, connection: Connection):
         try:
@@ -643,11 +736,20 @@ class AdtClient:
             path = f"{CDS_METADATA_PREFIX}{encoded}/source/main"
         else:
             raise ExportError("unsupported_system", "Unsupported ADT metadata source type.")
+        return self._metadata_get(path, "text/plain")
+
+    def data_element(self, name: str) -> tuple[str, str]:
+        if not OBJECT_IDENTIFIER.fullmatch(name.upper()):
+            raise ExportError("metadata_unavailable", "Live DDIC returned an invalid data-element reference.")
+        path = f"{DATA_ELEMENT_PREFIX}{quote(name.lower(), safe='')}"
+        return self._metadata_get(path, DATA_ELEMENT_ACCEPT)
+
+    def _metadata_get(self, path: str, accept: str) -> tuple[str, str]:
         try:
             response = self._session.get(
                 self._connection.base_url + path,
                 headers={
-                    "Accept": "text/plain",
+                    "Accept": accept,
                     "X-SAP-Client": self._connection.client,
                     "Accept-Language": self._connection.language,
                 },
@@ -758,8 +860,27 @@ def _comparison_value(value: str, spec: FieldSpec) -> Any:
     return value
 
 
-def parse_live_metadata(source_type: str, source: str) -> tuple[set[str], set[str]]:
-    """Extract published field names and declared keys from ADT source text."""
+def _infer_live_field_type(type_expression: str) -> str:
+    """Map an ADT/DDIC type expression to the small safe literal type set."""
+    normalized = re.sub(r"\s+", "", type_expression).lower()
+    if re.search(r"(?:^|\.)(?:int1|int2|int4|int8|integer)(?:\W|$)", normalized):
+        return "integer"
+    if re.search(r"(?:^|\.)(?:dec|curr|quan|fltp|decfloat16|decfloat34)(?:\W|$)", normalized):
+        return "decimal"
+    if re.search(r"(?:^|\.)(?:dats|date)(?:\W|$)", normalized):
+        return "date"
+    if re.search(r"(?:^|\.)(?:tims|time)(?:\W|$)", normalized):
+        return "time"
+    if re.search(r"(?:^|\.)(?:boolean|boole_d|xfeld)(?:\W|$)", normalized):
+        return "boolean"
+    # Named DDIC data elements do not expose their primitive domain in source
+    # text. Treating them as strings keeps literals quoted and fail-closed; SAP
+    # remains the authority and rejects incompatible comparisons.
+    return "string"
+
+
+def parse_live_metadata_details(source_type: str, source: str) -> LiveMetadata:
+    """Extract live fields, inferred literal types, and ordered declared keys."""
     without_block_comments = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
     clean = re.sub(r"//.*?$", "", without_block_comments, flags=re.MULTILINE)
     braces = re.search(r"\{(.*)\}", clean, flags=re.DOTALL)
@@ -767,23 +888,96 @@ def parse_live_metadata(source_type: str, source: str) -> tuple[set[str], set[st
         raise ExportError("metadata_unavailable", "ADT metadata source has no parseable field body.")
     body = braces.group(1)
     if source_type == "table":
-        matches = re.findall(r"(?im)(?:^|;)\s*(key\s+)?([A-Za-z][A-Za-z0-9_]*)\s*:", body)
-        fields = {name.upper() for _, name in matches}
-        keys = {name.upper() for key, name in matches if key}
+        matches = re.findall(
+            r"(?im)(?:^|;)\s*(key\s+)?([A-Za-z][A-Za-z0-9_]*)\s*:\s*([^;]+)",
+            body,
+        )
+        fields = {
+            name.upper(): FieldSpec(type=_infer_live_field_type(type_expression))
+            for _, name, type_expression in matches
+        }
+        keys = tuple(name.upper() for key, name, _ in matches if key)
+        type_references: dict[str, str] = {}
+        for _, name, type_expression in matches:
+            reference_match = re.match(
+                r"\s*((?:[A-Za-z][A-Za-z0-9_]{0,59}|/[A-Za-z0-9_]+/[A-Za-z0-9_/]+))(?=\s|$)",
+                type_expression,
+            )
+            if reference_match and not type_expression.lstrip().lower().startswith("abap."):
+                type_references[name.upper()] = reference_match.group(1).upper()
     else:
         # CDS projection syntax varies by release. Extract identifiers from the
         # projection body, then require every trusted field and key to occur as
         # an exact token before Data Preview is called. The Data Preview column
         # metadata provides the second, exact validation layer.
-        fields = {name.upper() for name in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\b", body)}
+        field_names = {name.upper() for name in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*\b", body)}
+        fields = {name: FieldSpec(type="string") for name in field_names}
         key_matches = re.findall(
             r"(?is)\bkey\s+(?:[A-Za-z][A-Za-z0-9_]*\.)?([A-Za-z][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z][A-Za-z0-9_]*))?",
             body,
         )
-        keys = {(alias or name).upper() for name, alias in key_matches}
+        keys = tuple((alias or name).upper() for name, alias in key_matches)
+        type_references = {}
     if not fields:
         raise ExportError("metadata_unavailable", "ADT metadata source contains no parseable fields.")
-    return fields, keys
+    return LiveMetadata(fields=fields, stable_key=keys, type_references=type_references)
+
+
+def parse_live_metadata(source_type: str, source: str) -> tuple[set[str], set[str]]:
+    """Backward-compatible field/key set view of parsed ADT metadata."""
+    details = parse_live_metadata_details(source_type, source)
+    return set(details.fields), set(details.stable_key)
+
+
+def parse_data_element_type(xml_text: str, expected_name: str) -> str:
+    """Resolve a DDIC data element to the safe literal class used by filters."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ExportError("metadata_unavailable", "ADT data-element metadata is invalid XML.") from exc
+    actual_name = _flat_attributes(root).get("name", "").upper()
+    if actual_name and actual_name != expected_name.upper():
+        raise ExportError("metadata_unavailable", "ADT data-element metadata identity does not match the requested reference.")
+    data_type = next(
+        ((element.text or "").strip().upper() for element in root.iter() if _local_name(element.tag) == "dataType"),
+        "",
+    )
+    if not data_type:
+        raise ExportError("metadata_unavailable", f"ADT data element {expected_name} has no published data type.")
+    if data_type in {"INT1", "INT2", "INT4", "INT8"}:
+        return "integer"
+    if data_type in {"DEC", "CURR", "QUAN", "FLTP", "DF16_DEC", "DF34_DEC", "DECFLOAT16", "DECFLOAT34"}:
+        return "decimal"
+    if data_type in {"DATS", "DATN"}:
+        return "date"
+    if data_type in {"TIMS", "TIMN"}:
+        return "time"
+    if data_type in {"BOOLEAN", "BOOLE"}:
+        return "boolean"
+    # Character-like and less common DDIC types remain quoted string literals.
+    # Their exact live DDIC identity and dataType were still validated above.
+    return "string"
+
+
+def enrich_live_field_types(
+    client: Any,
+    metadata: LiveMetadata,
+    required_fields: Iterable[str],
+) -> tuple[LiveMetadata, list[str]]:
+    fields = dict(metadata.fields)
+    hashes: list[str] = []
+    resolved: dict[str, str] = {}
+    for field in sorted({str(item).upper() for item in required_fields}):
+        reference = metadata.type_references.get(field)
+        if not reference:
+            continue
+        if reference not in resolved:
+            source, _path = client.data_element(reference)
+            resolved[reference] = parse_data_element_type(source, reference)
+            hashes.append(_sha256(source.encode("utf-8")))
+        current = fields[field]
+        fields[field] = FieldSpec(type=resolved[reference], sensitive=current.sensitive)
+    return LiveMetadata(fields=fields, stable_key=metadata.stable_key, type_references=metadata.type_references), hashes
 
 
 def _row_key(row: Mapping[str, str], request: PreparedRequest) -> tuple[Any, ...]:
@@ -819,10 +1013,12 @@ def _scope(request: PreparedRequest) -> dict[str, Any]:
 def execute(
     task: dict[str, Any],
     profiles: dict[str, Any],
-    client_factory: Callable[[Connection], Any] = AdtClient,
+    client_factory: Callable[[Connection], Any] | None = None,
     run_id: str | None = None,
     started_at: str | None = None,
+    internal_values: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
+    client_factory = client_factory or AdtClient
     run_id = run_id or str(uuid.uuid4())
     started_at = started_at or _utc_now()
     base: dict[str, Any] = {
@@ -849,21 +1045,42 @@ def execute(
         "artifacts": [{"type": "input", "sha256": _sha256(_canonical_bytes(task))}],
     }
     try:
-        request = _prepare_request(task, profiles)
+        trusted_values = internal_values or {}
+        source_type, object_name, profile = _task_identity(task, profiles, trusted_values)
+        client = client_factory(profile.connection)
+        metadata_source, _metadata_path = client.metadata(source_type, object_name)
+        live_metadata = parse_live_metadata_details(source_type, metadata_source)
+        type_metadata_hashes: list[str] = []
+        if profile.dynamic_objects:
+            requested_type_fields = [
+                *(item for item in task.get("fields", []) if isinstance(item, str)),
+                *(
+                    item.get("field")
+                    for item in task.get("filters", [])
+                    if isinstance(item, dict) and isinstance(item.get("field"), str)
+                ),
+                *live_metadata.stable_key,
+            ]
+            live_metadata, type_metadata_hashes = enrich_live_field_types(
+                client,
+                live_metadata,
+                requested_type_fields,
+            )
+        request = _prepare_request(
+            task,
+            profiles,
+            live_metadata=live_metadata if profile.dynamic_objects else None,
+            internal_values=trusted_values,
+        )
         base["source"] = {
             "type": "sap_adt_data_preview",
-            "connection_profile": request.profile_name,
-            "system_alias": request.connection.system_id,
-            "client": request.connection.client,
             "source_type": request.source_type,
             "object": request.object_name,
             "fields": list(request.fields),
-            "endpoint": ENDPOINT,
         }
         base["scope"] = _scope(request)
-        client = client_factory(request.connection)
-        metadata_source, metadata_path = client.metadata(request.source_type, request.object_name)
-        live_fields, live_keys = parse_live_metadata(request.source_type, metadata_source)
+        live_fields = set(live_metadata.fields)
+        live_keys = set(live_metadata.stable_key)
         required_fields = set(request.fields).union(request.object_spec.stable_key)
         if not required_fields.issubset(live_fields):
             missing = sorted(required_fields.difference(live_fields))
@@ -871,9 +1088,12 @@ def execute(
         if not set(request.object_spec.stable_key).issubset(live_keys):
             raise ExportError("stable_paging_key_unavailable", "Live ADT metadata does not confirm the trusted stable key.")
         metadata_at = _utc_now()
-        base["source"]["metadata_endpoint"] = metadata_path
         base["source"]["metadata_validated_at"] = metadata_at
         base["artifacts"].append({"type": "metadata", "sha256": _sha256(metadata_source.encode("utf-8")), "timestamp": metadata_at})
+        base["artifacts"].extend(
+            {"type": "data_element_metadata", "sha256": digest, "timestamp": metadata_at}
+            for digest in type_metadata_hashes
+        )
         output_rows: list[dict[str, str]] = []
         seen_keys: set[tuple[Any, ...]] = set()
         last_key: tuple[Any, ...] | None = None
@@ -986,19 +1206,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Strictly read-only bounded SAP ADT table/CDS export")
     parser.add_argument("--input", required=True, type=Path, help="Structured task JSON")
     parser.add_argument("--output", required=True, type=Path, help="Canonical result JSON")
-    parser.add_argument(
-        "--profiles",
-        type=Path,
-        default=Path(os.environ.get("SAP_ADT_PROFILES_FILE", "adt-profiles.json")),
-        help="Trusted profiles JSON (or set SAP_ADT_PROFILES_FILE)",
-    )
     args = parser.parse_args(argv)
     started_at = _utc_now()
     run_id = str(uuid.uuid4())
     try:
-        task = _read_json(args.input, code="filter_not_allowed")
-        profiles = _read_json(args.profiles, code="unsupported_system")
-        result = execute(task, profiles, run_id=run_id, started_at=started_at)
+        task = _read_json(args.input, code="filter_not_allowed", expose_path=True)
+        profiles, internal_values = load_internal_configuration()
+        result = execute(
+            task,
+            profiles,
+            run_id=run_id,
+            started_at=started_at,
+            internal_values=internal_values,
+        )
     except ExportError as exc:
         result = {
             "schema_version": SCHEMA_VERSION,

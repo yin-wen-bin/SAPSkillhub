@@ -18,6 +18,10 @@ site/.astro/
 site/.npm-cache/
 .playwright-cli/
 /skills/Common/sap-windowsgui-logon/assets/config.json
+/skills/Common/sap-adt-table-export/.env
+/skills/Common/sap-adt-table-export/adt-profiles.json
+/skills/Common/sap-adt-table-export/*.local.json
+/skills/Common/sap-adt-table-export/*.secrets.env
 
 # Abandoned GUI-only FBL prototypes (not suitable for portable SAP landscapes)
 /skills/FI/sap-fbl1n-export/

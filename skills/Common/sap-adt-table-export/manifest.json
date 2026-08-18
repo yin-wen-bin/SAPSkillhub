@@ -11,7 +11,8 @@
   "allowed_http_methods": ["GET", "POST"],
   "allowed_endpoints": [
     "/sap/bc/adt/datapreview/freestyle",
-    "/sap/bc/adt/ddic/tables/{allowlisted_object}/source/main",
-    "/sap/bc/adt/ddic/ddl/sources/{allowlisted_object}/source/main"
+    "/sap/bc/adt/ddic/tables/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/dataelements/{data_element}"
   ]
 }
