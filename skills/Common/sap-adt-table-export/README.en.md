@@ -18,7 +18,7 @@ Use it after a released API or OData service cannot supply a required field, and
 - An SAP user authorized only for the intended ADT Data Preview reads.
 - Active `/sap/bc/adt/datapreview/freestyle` over HTTPS.
 - Valid certificate trust; TLS verification cannot be disabled.
-- An ignored `.env` copied from `.env.example` and a protected profiles file based on `references/profiles.example.json`. The profiles file declares `default_profile`; callers cannot select it. Dynamic mode confirms objects, fields, literal types, and true stable keys from live DDIC metadata.
+- An ignored `.env` copied from `.env.example` and a protected profiles file based on `references/profiles.example.json`. The profiles file declares `default_profile`; callers cannot select it. Dynamic mode confirms objects, fields, recursively expanded include structures, literal types, and true stable keys from live DDIC metadata. Include cycles, excessive nesting, and conflicting inherited fields fail closed.
 - Python 3.10+ and the tested `requests==2.34.2` baseline from `scripts/requirements.txt` (minimum accepted: 2.31.0).
 
 ## Usage

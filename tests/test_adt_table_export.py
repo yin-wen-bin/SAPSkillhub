@@ -102,6 +102,8 @@ class FakeClient:
     calls = []
     connections = []
     metadata_source = "define table tstc { key tcode : tcode not null; pgmna : program_id; secret_value : char20; }"
+    structure_sources = {}
+    structure_calls = []
 
     def __init__(self, connection):
         self.__class__.connections.append(connection)
@@ -114,6 +116,13 @@ class FakeClient:
             f'<dataElement name="{name}"><dataType>CHAR</dataType></dataElement>',
             f"/sap/bc/adt/ddic/dataelements/{name.lower()}",
         )
+
+    def structure_metadata(self, name):
+        self.__class__.structure_calls.append(name)
+        source = self.__class__.structure_sources.get(name)
+        if source is None:
+            raise adt.ExportError("metadata_unavailable", "Structure metadata unavailable.")
+        return source, f"/sap/bc/adt/ddic/structures/{name.lower()}/source/main"
 
     def preview(self, sql, row_number):
         self.__class__.calls.append((sql, row_number))
@@ -164,6 +173,8 @@ class AdtTableExportTests(unittest.TestCase):
         FakeClient.responses = []
         FakeClient.calls = []
         FakeClient.connections = []
+        FakeClient.structure_sources = {}
+        FakeClient.structure_calls = []
         FakeClient.metadata_source = "define table tstc { key tcode : tcode not null; pgmna : program_id; secret_value : char20; }"
 
     def test_complete_bounded_query_validates_live_columns(self):
@@ -290,6 +301,69 @@ class AdtTableExportTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "failed")
         self.assertEqual(issue_code(result), "field_unavailable")
+        self.assertEqual(FakeClient.calls, [])
+
+    def test_dynamic_profile_expands_live_ddic_include_before_preview(self):
+        FakeClient.metadata_source = (
+            "define table mch1 { key mandt : mandt; key matnr : matnr; "
+            "key charg : charg; include mchi1 not null; }"
+        )
+        FakeClient.structure_sources = {
+            "MCHI1": "define structure mchi1 { vfdat : vfdat not null; }"
+        }
+        FakeClient.responses = [
+            adt.PreviewResult(
+                columns=("MATNR", "CHARG", "VFDAT", "MANDT"),
+                rows=(
+                    {
+                        "MATNR": "FG29",
+                        "CHARG": "0000000026",
+                        "VFDAT": "",
+                        "MANDT": "100",
+                    },
+                ),
+            )
+        ]
+        include_task = {
+            "schema_version": 1,
+            "source_type": "table",
+            "object": "MCH1",
+            "fields": ["MATNR", "CHARG", "VFDAT"],
+            "filters": [{"field": "MATNR", "operator": "eq", "value": "FG29"}],
+            "max_rows": 100,
+        }
+
+        result = adt.execute(
+            include_task,
+            dynamic_profile(),
+            client_factory=FakeClient,
+            internal_values=self.internal_values,
+        )
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(FakeClient.structure_calls, ["MCHI1"])
+        self.assertTrue(any(item["type"] == "structure_metadata" for item in result["artifacts"]))
+        self.assertIn("VFDAT", FakeClient.calls[0][0])
+
+    def test_dynamic_profile_rejects_recursive_ddic_include_cycle(self):
+        FakeClient.metadata_source = (
+            "define table mch1 { key mandt : mandt; key matnr : matnr; "
+            "key charg : charg; include mchi1 not null; }"
+        )
+        FakeClient.structure_sources = {
+            "MCHI1": "define structure mchi1 { include mchi2; }",
+            "MCHI2": "define structure mchi2 { include mchi1; }",
+        }
+
+        result = adt.execute(
+            task(object="MCH1", fields=["MATNR", "CHARG", "VFDAT"]),
+            dynamic_profile(),
+            client_factory=FakeClient,
+            internal_values=self.internal_values,
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(issue_code(result), "metadata_unavailable")
         self.assertEqual(FakeClient.calls, [])
 
     def test_dynamic_profile_allows_30000_rows_but_rejects_30001(self):
@@ -575,6 +649,7 @@ class AdtTableExportTests(unittest.TestCase):
             [
                 "/sap/bc/adt/datapreview/freestyle",
                 "/sap/bc/adt/ddic/tables/{ddic_object}/source/main",
+                "/sap/bc/adt/ddic/structures/{ddic_object}/source/main",
                 "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main",
                 "/sap/bc/adt/ddic/dataelements/{data_element}",
             ],

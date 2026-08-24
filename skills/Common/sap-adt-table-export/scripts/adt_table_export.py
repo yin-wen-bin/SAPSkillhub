@@ -28,6 +28,7 @@ MINIMUM_DEPENDENCIES = {"requests": "2.31.0"}
 TESTED_DEPENDENCIES = {"requests": "2.34.2"}
 ENDPOINT = "/sap/bc/adt/datapreview/freestyle"
 TABLE_METADATA_PREFIX = "/sap/bc/adt/ddic/tables/"
+STRUCTURE_METADATA_PREFIX = "/sap/bc/adt/ddic/structures/"
 CDS_METADATA_PREFIX = "/sap/bc/adt/ddic/ddl/sources/"
 DATA_ELEMENT_PREFIX = "/sap/bc/adt/ddic/dataelements/"
 ACCEPT = "application/vnd.sap.adt.datapreview.table.v1+xml"
@@ -72,6 +73,7 @@ ALLOWED_FILTER_OPTIONS = {"EQ", "NE", "GT", "GE", "LT", "LE", "BT", "IN"}
 ALLOWED_FIELD_TYPES = {"string", "integer", "decimal", "date", "time", "boolean"}
 MAX_EXPORT_ROWS = 30000
 MAX_PREVIEW_PAGE_SIZE = 10000
+MAX_INCLUDE_DEPTH = 8
 WRITE_TOKENS = {
     "INSERT",
     "UPDATE",
@@ -171,6 +173,7 @@ class LiveMetadata:
     fields: Mapping[str, FieldSpec]
     stable_key: tuple[str, ...]
     type_references: Mapping[str, str]
+    include_references: tuple[str, ...] = ()
 
 
 def _utc_now() -> str:
@@ -738,6 +741,12 @@ class AdtClient:
             raise ExportError("unsupported_system", "Unsupported ADT metadata source type.")
         return self._metadata_get(path, "text/plain")
 
+    def structure_metadata(self, name: str) -> tuple[str, str]:
+        if not FIELD_IDENTIFIER.fullmatch(name.upper()):
+            raise ExportError("metadata_unavailable", "Live DDIC returned an invalid include reference.")
+        path = f"{STRUCTURE_METADATA_PREFIX}{quote(name.lower(), safe='')}/source/main"
+        return self._metadata_get(path, "text/plain")
+
     def data_element(self, name: str) -> tuple[str, str]:
         if not OBJECT_IDENTIFIER.fullmatch(name.upper()):
             raise ExportError("metadata_unavailable", "Live DDIC returned an invalid data-element reference.")
@@ -887,7 +896,7 @@ def parse_live_metadata_details(source_type: str, source: str) -> LiveMetadata:
     if not braces:
         raise ExportError("metadata_unavailable", "ADT metadata source has no parseable field body.")
     body = braces.group(1)
-    if source_type == "table":
+    if source_type in {"table", "structure"}:
         matches = re.findall(
             r"(?im)(?:^|;)\s*(key\s+)?([A-Za-z][A-Za-z0-9_]*)\s*:\s*([^;]+)",
             body,
@@ -905,6 +914,13 @@ def parse_live_metadata_details(source_type: str, source: str) -> LiveMetadata:
             )
             if reference_match and not type_expression.lstrip().lower().startswith("abap."):
                 type_references[name.upper()] = reference_match.group(1).upper()
+        include_references = tuple(
+            name.upper()
+            for name in re.findall(
+                r"(?im)(?:^|;)\s*include\s+([A-Za-z][A-Za-z0-9_]*)\b",
+                body,
+            )
+        )
     else:
         # CDS projection syntax varies by release. Extract identifiers from the
         # projection body, then require every trusted field and key to occur as
@@ -918,9 +934,74 @@ def parse_live_metadata_details(source_type: str, source: str) -> LiveMetadata:
         )
         keys = tuple((alias or name).upper() for name, alias in key_matches)
         type_references = {}
+        include_references = ()
     if not fields:
         raise ExportError("metadata_unavailable", "ADT metadata source contains no parseable fields.")
-    return LiveMetadata(fields=fields, stable_key=keys, type_references=type_references)
+    return LiveMetadata(
+        fields=fields,
+        stable_key=keys,
+        type_references=type_references,
+        include_references=include_references,
+    )
+
+
+def expand_live_metadata(
+    client: Any,
+    source_type: str,
+    source: str,
+    *,
+    include_stack: tuple[str, ...] = (),
+) -> tuple[LiveMetadata, list[str]]:
+    """Expand live DDIC includes through the read-only structure source endpoint."""
+    metadata = parse_live_metadata_details(source_type, source)
+    if not metadata.include_references:
+        return metadata, []
+    if source_type not in {"table", "structure"}:
+        raise ExportError("metadata_unavailable", "Only table and structure metadata may contain DDIC includes.")
+
+    fields = dict(metadata.fields)
+    type_references = dict(metadata.type_references)
+    structure_hashes: list[str] = []
+    for include_name in metadata.include_references:
+        if include_name in include_stack:
+            chain = " -> ".join([*include_stack, include_name])
+            raise ExportError("metadata_unavailable", f"DDIC include cycle detected: {chain}.")
+        if len(include_stack) >= MAX_INCLUDE_DEPTH:
+            raise ExportError("metadata_unavailable", "DDIC include nesting exceeds the safe depth limit.")
+        include_source, _path = client.structure_metadata(include_name)
+        expanded, nested_hashes = expand_live_metadata(
+            client,
+            "structure",
+            include_source,
+            include_stack=(*include_stack, include_name),
+        )
+        structure_hashes.append(_sha256(include_source.encode("utf-8")))
+        structure_hashes.extend(nested_hashes)
+        for field_name, field_spec in expanded.fields.items():
+            if field_name in fields:
+                raise ExportError(
+                    "metadata_unavailable",
+                    f"DDIC include {include_name} conflicts with field {field_name}.",
+                )
+            fields[field_name] = field_spec
+        for field_name, reference in expanded.type_references.items():
+            existing = type_references.get(field_name)
+            if existing is not None and existing != reference:
+                raise ExportError(
+                    "metadata_unavailable",
+                    f"DDIC include {include_name} has conflicting type metadata for {field_name}.",
+                )
+            type_references[field_name] = reference
+
+    return (
+        LiveMetadata(
+            fields=fields,
+            stable_key=metadata.stable_key,
+            type_references=type_references,
+            include_references=(),
+        ),
+        structure_hashes,
+    )
 
 
 def parse_live_metadata(source_type: str, source: str) -> tuple[set[str], set[str]]:
@@ -977,7 +1058,12 @@ def enrich_live_field_types(
             hashes.append(_sha256(source.encode("utf-8")))
         current = fields[field]
         fields[field] = FieldSpec(type=resolved[reference], sensitive=current.sensitive)
-    return LiveMetadata(fields=fields, stable_key=metadata.stable_key, type_references=metadata.type_references), hashes
+    return LiveMetadata(
+        fields=fields,
+        stable_key=metadata.stable_key,
+        type_references=metadata.type_references,
+        include_references=metadata.include_references,
+    ), hashes
 
 
 def _row_key(row: Mapping[str, str], request: PreparedRequest) -> tuple[Any, ...]:
@@ -1049,7 +1135,11 @@ def execute(
         source_type, object_name, profile = _task_identity(task, profiles, trusted_values)
         client = client_factory(profile.connection)
         metadata_source, _metadata_path = client.metadata(source_type, object_name)
-        live_metadata = parse_live_metadata_details(source_type, metadata_source)
+        live_metadata, structure_metadata_hashes = expand_live_metadata(
+            client,
+            source_type,
+            metadata_source,
+        )
         type_metadata_hashes: list[str] = []
         if profile.dynamic_objects:
             requested_type_fields = [
@@ -1090,6 +1180,10 @@ def execute(
         metadata_at = _utc_now()
         base["source"]["metadata_validated_at"] = metadata_at
         base["artifacts"].append({"type": "metadata", "sha256": _sha256(metadata_source.encode("utf-8")), "timestamp": metadata_at})
+        base["artifacts"].extend(
+            {"type": "structure_metadata", "sha256": digest, "timestamp": metadata_at}
+            for digest in structure_metadata_hashes
+        )
         base["artifacts"].extend(
             {"type": "data_element_metadata", "sha256": digest, "timestamp": metadata_at}
             for digest in type_metadata_hashes

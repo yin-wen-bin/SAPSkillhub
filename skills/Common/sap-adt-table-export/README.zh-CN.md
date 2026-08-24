@@ -18,7 +18,7 @@ systems: [SAP S/4HANA, SAP NetWeaver AS ABAP]
 - SAP 用户仅具备目标 ADT Data Preview 只读权限。
 - `/sap/bc/adt/datapreview/freestyle` 已通过 HTTPS 启用。
 - 证书链可信，禁止关闭 TLS 校验。
-- 从 `.env.example` 复制得到的、已被 Git 忽略的 Skill 自有 `.env`，以及仓库外的受保护 profile 文件。profile 文件声明内部 `default_profile`，调用方不能选择或覆盖；动态模式通过实时 DDIC 确认对象、字段、类型和真实稳定键。
+- 从 `.env.example` 复制得到的、已被 Git 忽略的 Skill 自有 `.env`，以及仓库外的受保护 profile 文件。profile 文件声明内部 `default_profile`，调用方不能选择或覆盖；动态模式通过实时 DDIC 确认对象、字段、递归展开的 include 结构、类型和真实稳定键。include 循环、过深嵌套或继承字段冲突会在 Data Preview 前安全失败。
 - Python 3.10+，并安装 `scripts/requirements.txt` 中已测试的 `requests==2.34.2`（最低接受版本为 2.31.0）。
 
 ## 用法

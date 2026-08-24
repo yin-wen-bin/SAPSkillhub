@@ -12,6 +12,7 @@
   "allowed_endpoints": [
     "/sap/bc/adt/datapreview/freestyle",
     "/sap/bc/adt/ddic/tables/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/structures/{ddic_object}/source/main",
     "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main",
     "/sap/bc/adt/ddic/dataelements/{data_element}"
   ]
