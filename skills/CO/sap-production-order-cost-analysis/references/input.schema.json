@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-production-order-cost-analysis/input.schema.json",
+  "title": "SAP production order cost analysis input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manufacturing_order", "target_cost_variant"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "manufacturing_order": {"type": "string", "pattern": "^[0-9A-Za-z_-]{1,12}$"},
+    "fiscal_year": {"type": "string", "pattern": "^[0-9]{4}$"},
+    "period": {"type": "integer", "minimum": 1, "maximum": 16},
+    "analysis_period_from": {"type": "string", "pattern": "^[0-9]{7}$"},
+    "analysis_period_to": {"type": "string", "pattern": "^[0-9]{7}$"},
+    "target_cost_variant": {"type": "integer", "const": 1}
+  },
+  "allOf": [
+    {
+      "if": {"required": ["period"]},
+      "then": {"required": ["fiscal_year"]}
+    },
+    {
+      "if": {"required": ["analysis_period_from"]},
+      "then": {"required": ["analysis_period_to"]}
+    },
+    {
+      "if": {"required": ["analysis_period_to"]},
+      "then": {"required": ["analysis_period_from"]}
+    }
+  ]
+}

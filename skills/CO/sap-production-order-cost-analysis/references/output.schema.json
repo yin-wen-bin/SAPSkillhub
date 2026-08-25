@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-production-order-cost-analysis/output.schema.json",
+  "title": "SAP production order cost analysis output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "skill_id", "run_id", "status", "read_only", "validated", "order_context", "analysis_scope", "cost_element_details", "totals", "relationship_evidence", "completeness", "validation_issues", "started_at", "completed_at", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-production-order-cost-analysis"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "order_context": {"type": "object"},
+    "analysis_scope": {"type": "object"},
+    "cost_element_details": {"type": "array", "items": {"type": "object"}},
+    "totals": {"type": "object"},
+    "relationship_evidence": {"type": "object"},
+    "completeness": {"type": "object"},
+    "validation_issues": {"type": "array", "items": {"type": "object"}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}}
+  }
+}

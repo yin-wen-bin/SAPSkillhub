@@ -1,0 +1,6 @@
+interface:
+  display_name: "SAP Production Order Cost Analysis"
+  short_description: "Read-only production-order plan, target, and actual cost evidence"
+  default_prompt: "Use $sap-production-order-cost-analysis to obtain bounded, auditable production-order cost evidence."
+policy:
+  allow_implicit_invocation: true

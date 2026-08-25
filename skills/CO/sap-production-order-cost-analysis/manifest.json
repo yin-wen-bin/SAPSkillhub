@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "skill_id": "sap-production-order-cost-analysis",
+  "read_only": true,
+  "validated": true,
+  "entrypoint": "python run.py --input input.json --output output.json",
+  "input_schema": "references/input.schema.json",
+  "output_schema": "references/output.schema.json",
+  "timeout_seconds": 600,
+  "requires_target_system_validation": true,
+  "allowed_http_methods": ["GET", "POST"],
+  "allowed_endpoints": [
+    "/sap/bc/adt/datapreview/freestyle",
+    "/sap/bc/adt/ddic/tables/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/structures/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main",
+    "/sap/bc/adt/ddic/dataelements/{data_element}"
+  ]
+}
