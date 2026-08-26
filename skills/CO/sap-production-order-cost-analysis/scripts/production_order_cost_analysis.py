@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import decimal
 import hashlib
 import importlib.util
@@ -16,10 +17,8 @@ from datetime import datetime, timezone
 SCHEMA_VERSION = 1
 SKILL_ID = "sap-production-order-cost-analysis"
 MAX_COST_ROWS = 10_000
-CDS_SOURCES = (
-    "C_MfgOrdActlPlnTgtLdgrCost",
-    "I_MfgOrderActlPlanTgtLdgrCost",
-)
+CDS_SOURCE = "I_MfgOrderActlPlanTgtLdgrCost"
+PREVIEW_ROW_LIMIT = MAX_COST_ROWS + 1
 CDS_PARAMETERS = (
     "P_FromFiscalYearPeriod",
     "P_ToFiscalYearPeriod",
@@ -27,34 +26,35 @@ CDS_PARAMETERS = (
     "P_CurrencyRole",
     "P_TargetCostVariant",
 )
-CDS_KEYS = (
-    "OrderID",
-    "OrderItem",
-    "WorkCenterInternalID",
-    "WorkCenter",
-    "OrderOperation",
-    "GLAccount",
-    "PartnerCostCtrActivityType",
-    "PartnerCostCenter",
-    "Plant",
-    "Product",
-    "UnitOfMeasure",
-    "CurPlanProjSlsOrdValnStrategy",
-)
 CDS_FIELDS = (
-    *CDS_KEYS,
+    "OrderID",
+    "GLAccount",
     "Ledger",
     "ControllingArea",
     "CompanyCode",
-    "ProducedProduct",
     "DisplayCurrency",
-    "CreditActlCostInDspCrcy",
-    "DebitActlCostInDspCrcy",
     "CreditPlanCostInDspCrcy",
     "DebitPlanCostInDspCrcy",
     "CrdtTargetCostInDspCrcy",
     "DebitTargetCostInDspCrcy",
+    "CreditActlCostInDspCrcy",
+    "DebitActlCostInDspCrcy",
 )
+CDS_PARAMETER_TYPES = {
+    "P_FromFiscalYearPeriod": "fins_fyearperiod",
+    "P_ToFiscalYearPeriod": "fins_fyearperiod",
+    "P_Ledger": "fins_ledger",
+    "P_CurrencyRole": "fac_crcyrole",
+    "P_TargetCostVariant": "fis_awvrs",
+}
+CDS_AMOUNT_TYPES = {
+    "CreditPlanCostInDspCrcy": "fis_cr_plancost_in_dspcrcy",
+    "DebitPlanCostInDspCrcy": "fis_dr_plancost_in_dspcrcy",
+    "CrdtTargetCostInDspCrcy": "fis_cr_tgtcost_in_dspcrcy",
+    "DebitTargetCostInDspCrcy": "fis_dr_tgtcost_in_dspcrcy",
+    "CreditActlCostInDspCrcy": "fis_cr_actlcost_in_dspcrcy",
+    "DebitActlCostInDspCrcy": "fis_dr_actlcost_in_dspcrcy",
+}
 
 
 JsonObject = dict[str, Any]
@@ -77,8 +77,13 @@ def _sha256(value: bytes) -> str:
 def _decimal(value: Any) -> decimal.Decimal | None:
     if value in {None, ""}:
         return None
+    rendered = str(value).strip()
+    if rendered.endswith("-") and rendered.count("-") == 1:
+        rendered = "-" + rendered[:-1]
+    elif rendered.endswith("+") and rendered.count("+") == 1:
+        rendered = rendered[:-1]
     try:
-        parsed = decimal.Decimal(str(value))
+        parsed = decimal.Decimal(rendered)
     except (decimal.InvalidOperation, ValueError):
         return None
     return parsed if parsed.is_finite() else None
@@ -275,8 +280,30 @@ def _posting_period_headers(
     return headers, artifacts, issues
 
 
-def _live_cds_executor(task: JsonObject, adt_module: Any, profile: Any) -> JsonObject:
-    client = adt_module.AdtClient(profile.connection)
+def _declared_type(ddl: str, name: str, *, cast_alias: bool = False) -> str | None:
+    if cast_alias:
+        pattern = rf"cast\s*\([^)]*?\bas\s+([A-Za-z0-9_/]+)\s*\)\s+as\s+{re.escape(name)}\b"
+    else:
+        pattern = rf"\b{re.escape(name)}\s*:\s*([A-Za-z0-9_/]+)"
+    match = re.search(pattern, ddl, flags=re.IGNORECASE | re.DOTALL)
+    return match.group(1).lower() if match else None
+
+
+def _validate_cost_cds_contract(ddl: str) -> list[str]:
+    mismatches: list[str] = []
+    for name, expected in CDS_PARAMETER_TYPES.items():
+        if _declared_type(ddl, name) != expected:
+            mismatches.append(name)
+    for field in CDS_FIELDS:
+        if not re.search(rf"\b{re.escape(field)}\b", ddl, flags=re.IGNORECASE):
+            mismatches.append(field)
+    for name, expected in CDS_AMOUNT_TYPES.items():
+        if _declared_type(ddl, name, cast_alias=True) != expected:
+            mismatches.append(name)
+    return sorted(set(mismatches))
+
+
+def _cost_sql(task: JsonObject) -> str:
     parameters = {
         "P_FromFiscalYearPeriod": task["analysis_period_from"],
         "P_ToFiscalYearPeriod": task["analysis_period_to"],
@@ -284,88 +311,156 @@ def _live_cds_executor(task: JsonObject, adt_module: Any, profile: Any) -> JsonO
         "P_CurrencyRole": "10",
         "P_TargetCostVariant": "001",
     }
-    failures: list[JsonObject] = []
-    for source in CDS_SOURCES:
-        try:
-            ddl, _path = client.metadata("cds", source)
-            missing_parameters = [name for name in CDS_PARAMETERS if name not in ddl]
-            missing_fields = [name for name in CDS_FIELDS if not re.search(rf"\b{re.escape(name)}\b", ddl)]
-            if missing_parameters or missing_fields:
-                failures.append(
-                    {
-                        "code": "released_cost_cds_contract_mismatch",
-                        "source": source,
-                        "missing_parameters": missing_parameters,
-                        "missing_fields": missing_fields,
-                    }
-                )
-                continue
-            rendered_parameters = ", ".join(
-                f"{name} = '{str(value).replace(chr(39), chr(39) * 2)}'"
-                for name, value in parameters.items()
-            )
-            order = str(task["adt_order"]).replace("'", "''")
-            sql = (
-                f"SELECT {', '.join(CDS_FIELDS)} FROM {source}( {rendered_parameters} ) "
-                f"WHERE OrderID = '{order}' ORDER BY {', '.join(CDS_KEYS)}"
-            )
-            adt_module._validate_compiled_select(sql)
-            preview = client.preview(sql, MAX_COST_ROWS + 1)
-            expected = tuple(field.upper() for field in CDS_FIELDS)
-            returned = tuple(str(field).upper() for field in preview.columns)
-            if returned != expected:
-                failures.append({"code": "released_cost_cds_column_mismatch", "source": source})
-                continue
-            rows = [dict(row) for row in preview.rows[:MAX_COST_ROWS]]
-            truncated = len(preview.rows) > MAX_COST_ROWS
-            return {
-                "status": "partial" if truncated else "complete",
-                "validated": True,
-                "read_only": True,
-                "source": source,
-                "rows": rows,
-                "completeness": {
-                    "source_complete": not truncated,
-                    "paging_complete": not truncated,
-                    "truncated": truncated,
-                },
-                "metadata_sha256": _sha256(ddl.encode("utf-8")),
-                "query_sha256": _sha256(sql.encode("utf-8")),
-                "validation_issues": (
-                    [{"code": "row_limit_reached", "message": "The released cost CDS exceeded the bounded result limit."}]
-                    if truncated
-                    else []
-                ),
-            }
-        except Exception as exc:
-            failures.append(
-                {
-                    "code": str(getattr(exc, "code", "parameterized_cds_unavailable")),
-                    "source": source,
-                    "message": str(getattr(exc, "message", type(exc).__name__)),
-                }
-            )
-    return {
-        "status": "failed",
-        "validated": False,
-        "read_only": True,
-        "source": None,
-        "rows": [],
-        "completeness": {"source_complete": False, "paging_complete": False, "truncated": False},
-        "validation_issues": [
-            {
-                "code": "parameterized_production_cost_cds_unavailable",
-                "message": "Neither released production-order cost CDS could be executed through bounded ADT Data Preview.",
-                "attempts": failures,
-            }
-        ],
+    lines = ["SELECT"]
+    lines.extend(
+        f"  {field}{',' if index < len(CDS_FIELDS) - 1 else ''}"
+        for index, field in enumerate(CDS_FIELDS)
+    )
+    lines.append(f"FROM {CDS_SOURCE}(")
+    for index, name in enumerate(CDS_PARAMETERS):
+        value = str(parameters[name]).replace("'", "''")
+        lines.append(f"  {name} = '{value}'{',' if index < len(CDS_PARAMETERS) - 1 else ''}")
+    lines.append(")")
+    order = str(task["adt_order"]).replace("'", "''")
+    lines.append(f"WHERE OrderID = '{order}'")
+    if any(len(line) > 120 for line in lines):
+        raise RuntimeError("generated_query_line_too_long")
+    return "\n".join(lines)
+
+
+def _safe_cds_failure(code: str) -> tuple[str, str]:
+    messages = {
+        "query_line_truncated": "SAP rejected a query line because it exceeded the supported length.",
+        "query_syntax_invalid": "SAP rejected the structured query syntax.",
+        "query_column_invalid": "SAP could not resolve a selected query column.",
+        "query_execution_failed": "SAP rejected the parameterized production-cost query.",
+        "timeout": "The SAP ADT production-cost request timed out.",
+        "authorization_denied": "SAP denied the production-cost ADT request.",
+        "authentication_failed": "SAP ADT authentication failed.",
+        "tls_validation_failed": "SAP ADT TLS certificate validation failed.",
+        "adt_service_unavailable": "SAP ADT Data Preview is unavailable.",
+        "metadata_unavailable": "SAP ADT metadata is unavailable.",
+        "released_cost_cds_contract_mismatch": "The live production-cost CDS contract does not match the validated interface.",
+        "released_cost_cds_column_mismatch": "The production-cost query returned an unexpected column contract.",
     }
+    if code not in messages:
+        code = "query_execution_failed"
+    return code, messages[code]
 
 
-def _aggregate_cds_rows(rows: list[JsonObject], scope: JsonObject) -> tuple[list[JsonObject], JsonObject, list[JsonObject]]:
+def _live_cds_executor(task: JsonObject, adt_module: Any, profile: Any) -> JsonObject:
+    connection = replace(
+        profile.connection,
+        timeout_seconds=max(120, profile.connection.timeout_seconds),
+    )
+    client = adt_module.AdtClient(connection)
+    metadata_hash: str | None = None
+    query_hash: str | None = None
+    try:
+        ddl, _path = client.metadata("cds", CDS_SOURCE)
+        metadata_hash = _sha256(ddl.encode("utf-8"))
+        mismatches = _validate_cost_cds_contract(ddl)
+        if mismatches:
+            raise adt_module.ExportError(
+                "released_cost_cds_contract_mismatch",
+                "The live production-cost CDS contract does not match the validated interface.",
+            )
+        sql = _cost_sql(task)
+        adt_module._validate_compiled_select(sql)
+        query_hash = _sha256(sql.encode("utf-8"))
+        preview = client.preview(sql, PREVIEW_ROW_LIMIT, prefer_post=True)
+        expected = tuple(field.upper() for field in CDS_FIELDS)
+        returned = tuple(str(field).upper() for field in preview.columns)
+        if returned != expected:
+            raise adt_module.ExportError(
+                "released_cost_cds_column_mismatch",
+                "The production-cost query returned an unexpected column contract.",
+            )
+        normalized_rows = []
+        for row in preview.rows:
+            upper_row = {str(key).upper(): value for key, value in row.items()}
+            normalized_rows.append(
+                {field: upper_row.get(field.upper(), "") for field in CDS_FIELDS}
+            )
+        total_rows = preview.total_rows
+        returned_rows = len(normalized_rows)
+        issues: list[JsonObject] = []
+        if total_rows is None:
+            issues.append({"code": "source_total_unavailable", "message": "SAP did not provide a usable total row count."})
+        else:
+            expected_returned = min(total_rows, PREVIEW_ROW_LIMIT)
+            if returned_rows != expected_returned:
+                issues.append({"code": "row_count_mismatch", "message": "The SAP total row count does not match the returned row count."})
+            if total_rows > MAX_COST_ROWS:
+                issues.append({"code": "row_limit_reached", "message": "The production-cost CDS exceeded the bounded result limit."})
+        source_complete = not issues
+        return {
+            "status": "complete" if source_complete else "partial",
+            "validated": True,
+            "read_only": True,
+            "source": CDS_SOURCE,
+            "rows": normalized_rows if source_complete else [],
+            "completeness": {
+                "source_complete": source_complete,
+                "paging_complete": source_complete,
+                "total_rows": total_rows,
+                "returned_rows": returned_rows,
+                "requested_row_limit": PREVIEW_ROW_LIMIT,
+                "truncated": total_rows is not None and total_rows > MAX_COST_ROWS,
+            },
+            "metadata_sha256": metadata_hash,
+            "query_sha256": query_hash,
+            "validation_issues": issues,
+        }
+    except Exception as exc:
+        code, message = _safe_cds_failure(str(getattr(exc, "code", "query_execution_failed")))
+        return {
+            "status": "failed",
+            "validated": False,
+            "read_only": True,
+            "source": CDS_SOURCE,
+            "rows": [],
+            "completeness": {
+                "source_complete": False,
+                "paging_complete": False,
+                "total_rows": None,
+                "returned_rows": 0,
+                "requested_row_limit": PREVIEW_ROW_LIMIT,
+                "truncated": False,
+            },
+            **({"metadata_sha256": metadata_hash} if metadata_hash else {}),
+            **({"query_sha256": query_hash} if query_hash else {}),
+            "validation_issues": [{"code": code, "message": message}],
+        }
+
+
+def _aggregate_cds_rows(
+    rows: list[JsonObject],
+    scope: JsonObject,
+    order_row: JsonObject,
+    adt_order: str,
+    source: str,
+) -> tuple[list[JsonObject], JsonObject, list[JsonObject]]:
     groups: dict[tuple[str, str, str, str, str], dict[str, decimal.Decimal]] = {}
     issues: list[JsonObject] = []
+    expected_company = str(order_row.get("BUKRS") or "").strip()
+    expected_controlling_area = str(order_row.get("KOKRS") or "").strip()
+    currencies: set[str] = set()
     for row in rows:
+        if str(row.get("OrderID") or "").strip() != adt_order:
+            issues.append({"code": "production_cost_order_mismatch", "message": "A cost row belongs to a different manufacturing order."})
+        if (
+            str(row.get("CompanyCode") or "").strip() != expected_company
+            or str(row.get("ControllingArea") or "").strip() != expected_controlling_area
+        ):
+            issues.append({"code": "production_cost_relationship_conflict", "message": "A cost row conflicts with the AUFK company code or controlling area."})
+        if str(row.get("Ledger") or "").strip() != "0L":
+            issues.append({"code": "cost_ledger_mismatch", "message": "A cost row is outside fixed ledger 0L."})
+        currency = str(row.get("DisplayCurrency") or "").strip()
+        if not currency:
+            issues.append({"code": "cost_currency_invalid", "message": "A cost row lacks display currency."})
+        else:
+            currencies.add(currency)
         key = tuple(
             str(row.get(field) or "").strip()
             for field in ("CompanyCode", "ControllingArea", "Ledger", "DisplayCurrency", "GLAccount")
@@ -385,8 +480,10 @@ def _aggregate_cds_rows(rows: list[JsonObject], scope: JsonObject) -> tuple[list
             value = _decimal(row.get(field))
             if value is None:
                 issues.append({"code": "cost_amount_invalid", "message": f"A CDS cost row contains an invalid {field} amount."})
-                value = decimal.Decimal(0)
-            values.append(value)
+            else:
+                values.append(value)
+        if len(values) != 6:
+            continue
         bucket = groups.setdefault(
             key,
             {"plan": decimal.Decimal(0), "target": decimal.Decimal(0), "actual": decimal.Decimal(0)},
@@ -394,6 +491,11 @@ def _aggregate_cds_rows(rows: list[JsonObject], scope: JsonObject) -> tuple[list
         bucket["plan"] += values[0] + values[1]
         bucket["target"] += values[2] + values[3]
         bucket["actual"] += values[4] + values[5]
+    if len(currencies) > 1:
+        issues.append({"code": "cost_scope_not_comparable", "message": "Cost rows span multiple display currencies."})
+    if issues:
+        unique = {item["code"]: item for item in issues}
+        return [], {}, [unique[code] for code in sorted(unique)]
     details: list[JsonObject] = []
     for key, values in sorted(groups.items()):
         company_code, controlling_area, ledger, currency, cost_element = key
@@ -412,26 +514,19 @@ def _aggregate_cds_rows(rows: list[JsonObject], scope: JsonObject) -> tuple[list
                 "currency": currency,
                 "analysis_period_from": scope["analysis_period_from"],
                 "analysis_period_to": scope["analysis_period_to"],
-                "evidence_source": "released_production_order_cost_cds",
+                "evidence_source": source,
             }
         )
-    ledgers = {item["ledger"] for item in details}
-    currencies = {item["currency"] for item in details}
-    roles = {item["currency_role"] for item in details}
-    if len(ledgers) > 1 or len(currencies) > 1 or len(roles) > 1:
-        issues.append({"code": "cost_scope_not_comparable", "message": "Cost rows span multiple ledgers, currencies, or currency roles."})
-        totals: JsonObject = {"plan_cost_total": None, "target_cost_total": None, "actual_cost_total": None, "actual_target_variance": None}
-    else:
-        plan = sum((decimal.Decimal(item["plan_cost"]) for item in details), decimal.Decimal(0))
-        target = sum((decimal.Decimal(item["target_cost"]) for item in details), decimal.Decimal(0))
-        actual = sum((decimal.Decimal(item["actual_cost"]) for item in details), decimal.Decimal(0))
-        totals = {
-            "plan_cost_total": _exact(plan),
-            "target_cost_total": _exact(target),
-            "actual_cost_total": _exact(actual),
-            "actual_target_variance": _exact(actual - target),
-            "currency": next(iter(currencies), None),
-        }
+    plan = sum((decimal.Decimal(item["plan_cost"]) for item in details), decimal.Decimal(0))
+    target = sum((decimal.Decimal(item["target_cost"]) for item in details), decimal.Decimal(0))
+    actual = sum((decimal.Decimal(item["actual_cost"]) for item in details), decimal.Decimal(0))
+    totals = {
+        "plan_cost_total": _exact(plan),
+        "target_cost_total": _exact(target),
+        "actual_cost_total": _exact(actual),
+        "actual_target_variance": _exact(actual - target),
+        "currency": next(iter(currencies), None),
+    }
     return details, totals, issues
 
 
@@ -459,7 +554,15 @@ def execute(
         "cost_element_details": [],
         "totals": {},
         "relationship_evidence": {},
-        "completeness": {"source_complete": False, "evidence_complete": False, "paging_complete": False},
+        "completeness": {
+            "source_complete": False,
+            "evidence_complete": False,
+            "paging_complete": False,
+            "total_rows": None,
+            "returned_rows": 0,
+            "requested_row_limit": PREVIEW_ROW_LIMIT,
+            "truncated": False,
+        },
         "validation_issues": [],
         "started_at": started_at,
         "completed_at": started_at,
@@ -546,7 +649,14 @@ def execute(
         "validated": False,
         "read_only": True,
         "rows": [],
-        "completeness": {"source_complete": False, "paging_complete": False},
+        "completeness": {
+            "source_complete": False,
+            "paging_complete": False,
+            "total_rows": None,
+            "returned_rows": 0,
+            "requested_row_limit": PREVIEW_ROW_LIMIT,
+            "truncated": False,
+        },
         "validation_issues": [],
     }
     if period_from and period_to and not period_issues:
@@ -561,23 +671,38 @@ def execute(
             or [{"code": "production_cost_evidence", "message": "Released plan, target, and actual production-order cost evidence is incomplete."}]
         )
     cds_rows = [dict(row) for row in cds_result.get("rows") or [] if isinstance(row, dict)]
-    details, totals, aggregation_issues = _aggregate_cds_rows(cds_rows, scope) if cds_rows else ([], {}, [])
+    details, totals, aggregation_issues = (
+        _aggregate_cds_rows(
+            cds_rows,
+            scope,
+            order_row,
+            normalized["adt_order"],
+            str(cds_result.get("source") or CDS_SOURCE),
+        )
+        if _complete(cds_result) and cds_rows
+        else ([], {}, [])
+    )
     issues.extend(aggregation_issues)
-    if _complete(cds_result) and not details:
+    if _complete(cds_result) and not cds_rows:
         issues.append({"code": "production_cost_evidence_empty", "message": "The complete CDS query returned no plan, target, or actual cost element rows."})
+
+    cds_completeness = (
+        cds_result.get("completeness")
+        if isinstance(cds_result.get("completeness"), dict)
+        else {}
+    )
+    actual_required_for_scope = not normalized["fiscal_year"] and not normalized["analysis_period_from"]
+    source_complete = bool(
+        _complete(order_result)
+        and cds_completeness.get("source_complete") is True
+        and (actual_complete or not actual_required_for_scope)
+    )
+    evidence_complete = bool(source_complete and details and not issues)
 
     base.update(
         {
-            "status": "complete" if not issues else "partial",
-            "validated": bool(
-                _complete(order_result)
-                and _complete(cds_result)
-                and (
-                    actual_complete
-                    or normalized["fiscal_year"]
-                    or normalized["analysis_period_from"]
-                )
-            ),
+            "status": "complete" if evidence_complete else "partial",
+            "validated": evidence_complete,
             "order_context": {
                 "manufacturing_order": normalized["manufacturing_order"],
                 "company_code": str(order_row.get("BUKRS") or "").strip(),
@@ -595,17 +720,13 @@ def execute(
                 "released_cost_source": cds_result.get("source"),
             },
             "completeness": {
-                "source_complete": not issues,
-                "evidence_complete": not issues,
-                "paging_complete": bool(
-                    _complete(order_result)
-                    and _complete(cds_result)
-                    and (
-                        actual_complete
-                        or normalized["fiscal_year"]
-                        or normalized["analysis_period_from"]
-                    )
-                ),
+                "source_complete": source_complete,
+                "evidence_complete": evidence_complete,
+                "paging_complete": source_complete,
+                "total_rows": cds_completeness.get("total_rows"),
+                "returned_rows": int(cds_completeness.get("returned_rows") or 0),
+                "requested_row_limit": PREVIEW_ROW_LIMIT,
+                "truncated": bool(cds_completeness.get("truncated")),
             },
             "validation_issues": issues,
             "artifacts": [
@@ -721,7 +842,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "cost_element_details": [],
             "totals": {},
             "relationship_evidence": {},
-            "completeness": {"source_complete": False, "evidence_complete": False, "paging_complete": False},
+            "completeness": {
+                "source_complete": False,
+                "evidence_complete": False,
+                "paging_complete": False,
+                "total_rows": None,
+                "returned_rows": 0,
+                "requested_row_limit": PREVIEW_ROW_LIMIT,
+                "truncated": False,
+            },
             "validation_issues": [{"code": "runtime_failure", "message": f"The cost-analysis runtime failed closed: {type(exc).__name__}."}],
             "started_at": started_at,
             "completed_at": _now(),

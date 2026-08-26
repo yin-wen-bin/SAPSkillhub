@@ -155,6 +155,7 @@ class PreparedRequest:
 class PreviewResult:
     columns: tuple[str, ...]
     rows: tuple[dict[str, str], ...]
+    total_rows: int | None = None
 
 
 @dataclass(frozen=True)
@@ -636,7 +637,7 @@ def _mask_literals(sql: str) -> str:
 
 def _validate_compiled_select(sql: str) -> None:
     masked = _mask_literals(sql).upper()
-    if not masked.startswith("SELECT ") or ";" in masked or "--" in masked or "/*" in masked or "*/" in masked:
+    if not re.match(r"^SELECT\s", masked) or ";" in masked or "--" in masked or "/*" in masked or "*/" in masked:
         raise ExportError("filter_not_allowed", "Internal query compiler produced an unsafe statement.")
     tokens = set(re.findall(r"\b[A-Z]+\b", masked))
     if tokens.intersection(WRITE_TOKENS):
@@ -669,6 +670,27 @@ def _local_name(tag: str) -> str:
 
 def _flat_attributes(element: ET.Element) -> dict[str, str]:
     return {_local_name(key): value for key, value in element.attrib.items()}
+
+
+def _preview_total_rows(root: ET.Element) -> int | None:
+    candidates: list[str] = []
+    for element in root.iter():
+        for key, value in element.attrib.items():
+            if _local_name(key).lower() == "totalrows":
+                candidates.append(value)
+        if _local_name(element.tag).lower() == "totalrows" and element.text is not None:
+            candidates.append(element.text)
+    if not candidates:
+        return None
+    parsed: list[int] = []
+    for candidate in candidates:
+        value = candidate.strip()
+        if not re.fullmatch(r"\d+", value):
+            return None
+        parsed.append(int(value))
+    if len(set(parsed)) != 1:
+        return None
+    return parsed[0]
 
 
 def parse_preview_xml(xml_text: str) -> PreviewResult:
@@ -707,7 +729,38 @@ def parse_preview_xml(xml_text: str) -> PreviewResult:
         {name: values[index] if index < len(values) else "" for name, values in columns}
         for index in range(row_count)
     )
-    return PreviewResult(columns=tuple(name for name, _ in columns), rows=rows)
+    return PreviewResult(
+        columns=tuple(name for name, _ in columns),
+        rows=rows,
+        total_rows=_preview_total_rows(root),
+    )
+
+
+def _query_error(status_code: int, xml_text: str) -> ExportError:
+    normalized = ""
+    try:
+        root = ET.fromstring(xml_text)
+        parts: list[str] = []
+        for element in root.iter():
+            parts.append(_local_name(element.tag))
+            parts.extend(_local_name(key) for key in element.attrib)
+            parts.extend(element.attrib.values())
+            if element.text:
+                parts.append(element.text)
+        normalized = " ".join(parts).lower()
+    except ET.ParseError:
+        normalized = ""
+    if "truncat" in normalized or (
+        "line" in normalized and any(token in normalized for token in ("too long", "maximum length", "max length"))
+    ):
+        return ExportError("query_line_truncated", "SAP rejected a query line because it exceeded the supported length.")
+    if any(token in normalized for token in ("unknown column", "invalid column", "column not found")) or (
+        "column" in normalized and any(token in normalized for token in ("does not exist", "could not be found"))
+    ):
+        return ExportError("query_column_invalid", "SAP could not resolve a selected query column.")
+    if any(token in normalized for token in ("syntax", "parse error", "unexpected token")):
+        return ExportError("query_syntax_invalid", "SAP rejected the structured query syntax.")
+    return ExportError("query_execution_failed", f"SAP rejected the structured query (HTTP {status_code}).")
 
 
 class AdtClient:
@@ -812,29 +865,53 @@ class AdtClient:
             kwargs["data"] = sql.encode("utf-8")
         return self._session.request(method, self._url, **kwargs)
 
-    def preview(self, sql: str, row_number: int) -> PreviewResult:
+    def _csrf_token(self) -> str:
+        response = self._session.get(
+            self._url,
+            headers={
+                "Accept": ACCEPT,
+                "X-SAP-Client": self._connection.client,
+                "x-csrf-token": "fetch",
+            },
+            verify=self._connection.verify,
+            timeout=self._connection.timeout_seconds,
+            allow_redirects=False,
+        )
+        if 300 <= response.status_code < 400:
+            raise ExportError("adt_service_unavailable", "Redirects are not allowed while fetching an ADT CSRF token.")
+        if response.status_code == 401:
+            raise ExportError("authentication_failed", "SAP ADT authentication failed.")
+        if response.status_code == 403:
+            raise ExportError("authorization_denied", "SAP denied the ADT CSRF token request.")
+        token = response.headers.get("x-csrf-token")
+        if token and (200 <= response.status_code < 300 or response.status_code == 405):
+            return token
+        if response.status_code in {404, 405, 501, 503}:
+            raise ExportError("adt_service_unavailable", f"SAP ADT CSRF token service is unavailable (HTTP {response.status_code}).")
+        if response.status_code >= 400:
+            raise ExportError("adt_service_unavailable", f"SAP rejected the ADT CSRF token request (HTTP {response.status_code}).")
+        if not token:
+            raise ExportError("adt_service_unavailable", "SAP ADT did not return a CSRF token.")
+        return token
+
+    def preview(self, sql: str, row_number: int, *, prefer_post: bool = False) -> PreviewResult:
         if not 1 <= row_number <= 10001:
             raise ExportError("row_limit_reached", "Internal ADT row limit is invalid.")
         _validate_compiled_select(sql)
         try:
-            response = self._request("GET", row_number=row_number, sql=sql)
-            if response.status_code == 405:
+            if prefer_post:
                 response = self._request("POST", row_number=row_number, sql=sql)
-                if response.status_code == 403 and "csrf" in response.text.lower():
-                    token_response = self._session.get(
-                        self._url,
-                        headers={
-                            "Accept": ACCEPT,
-                            "X-SAP-Client": self._connection.client,
-                            "x-csrf-token": "fetch",
-                        },
-                        verify=self._connection.verify,
-                        timeout=self._connection.timeout_seconds,
-                        allow_redirects=False,
-                    )
-                    token = token_response.headers.get("x-csrf-token")
-                    if token:
-                        response = self._request("POST", row_number=row_number, sql=sql, token=token)
+            else:
+                response = self._request("GET", row_number=row_number, sql=sql)
+                if response.status_code == 405:
+                    response = self._request("POST", row_number=row_number, sql=sql)
+            if response.status_code == 403 and "csrf" in response.text.lower():
+                response = self._request(
+                    "POST",
+                    row_number=row_number,
+                    sql=sql,
+                    token=self._csrf_token(),
+                )
             if 300 <= response.status_code < 400:
                 raise ExportError("adt_service_unavailable", "Redirects are not allowed for the ADT endpoint.")
             if response.status_code == 401:
@@ -843,6 +920,8 @@ class AdtClient:
                 raise ExportError("authorization_denied", "SAP denied the ADT Data Preview request.")
             if response.status_code in {404, 405, 501, 503}:
                 raise ExportError("adt_service_unavailable", f"SAP ADT Data Preview is unavailable (HTTP {response.status_code}).")
+            if response.status_code in {400, 422}:
+                raise _query_error(response.status_code, response.text)
             if response.status_code >= 400:
                 raise ExportError("metadata_unavailable", f"SAP rejected the structured query (HTTP {response.status_code}).")
             return parse_preview_xml(response.text)

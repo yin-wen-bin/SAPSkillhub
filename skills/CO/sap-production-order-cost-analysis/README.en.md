@@ -7,7 +7,7 @@ systems: [SAP S/4HANA]
 
 ## Overview
 
-This Skill reads auditable production-order cost evidence for one bounded order and fiscal-period scope. It first proves the AUFK cost-object relationship, validates the released parameterized production-order cost CDS at runtime, and returns plan, target, and actual values by cost element.
+This Skill reads auditable production-order cost evidence for one bounded order and fiscal-period scope. It first proves the AUFK cost-object relationship, validates `I_MfgOrderActlPlanTgtLdgrCost` at runtime, and returns plan, target, and actual values by cost element only after the exact SAP row count and every returned amount are validated.
 
 ## Use Cases
 
@@ -38,7 +38,7 @@ The output schema is `references/output.schema.json`. It includes order context,
 
 ## Limitations
 
-`partial` means the evidence contract is incomplete. Missing plan or target cost is never interpreted as zero. Standard material price is never substituted for production-order target cost. Different ledgers, currencies, currency roles, and periods are never silently combined.
+`partial` means the evidence contract is incomplete. Empty, truncated, count-mismatched, relationship-conflicting, or invalid amount evidence produces no cost details or totals. Missing plan or target cost is never interpreted as zero. Standard material price is never substituted for production-order target cost. Different ledgers, currencies, currency roles, and periods are never silently combined.
 
 ## Examples
 

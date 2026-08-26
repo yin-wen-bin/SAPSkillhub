@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -597,10 +598,11 @@ class AdtTableExportTests(unittest.TestCase):
             adt.main(["--profiles", "caller.json", "--input", "input.json", "--output", "output.json"])
 
     def test_parsers_read_preview_and_ddic_metadata(self):
-        xml = '<table><columns><metadata name="TCODE"/><dataSet><data>SE16N</data></dataSet></columns><columns><metadata name="PGMNA"/><dataSet><data>RK_SE16N</data></dataSet></columns></table>'
+        xml = '<table totalRows="1"><columns><metadata name="TCODE"/><dataSet><data>SE16N</data></dataSet></columns><columns><metadata name="PGMNA"/><dataSet><data>RK_SE16N</data></dataSet></columns></table>'
         parsed = adt.parse_preview_xml(xml)
         self.assertEqual(parsed.columns, ("TCODE", "PGMNA"))
         self.assertEqual(parsed.rows, ({"TCODE": "SE16N", "PGMNA": "RK_SE16N"},))
+        self.assertEqual(parsed.total_rows, 1)
         fields, keys = adt.parse_live_metadata(
             "table",
             "define table tstc { key tcode : tcode not null; pgmna : program_id; }",
@@ -614,6 +616,70 @@ class AdtTableExportTests(unittest.TestCase):
             ),
             "date",
         )
+
+    def test_preview_total_rows_element_invalid_and_legacy_constructor(self):
+        element = '<table><totalRows>0</totalRows><columns><metadata name="TCODE"/><dataSet/></columns></table>'
+        self.assertEqual(adt.parse_preview_xml(element).total_rows, 0)
+        invalid = '<table totalRows="-1"><columns><metadata name="TCODE"/><dataSet/></columns></table>'
+        self.assertIsNone(adt.parse_preview_xml(invalid).total_rows)
+        self.assertIsNone(adt.PreviewResult(columns=("A",), rows=()).total_rows)
+
+    def test_prefer_post_uses_body_and_retries_only_for_csrf(self):
+        xml = '<table totalRows="0"><columns><metadata name="TCODE"/><dataSet/></columns></table>'
+        responses = [
+            SimpleNamespace(status_code=403, text="CSRF token validation failed", headers={}),
+            SimpleNamespace(status_code=200, text=xml, headers={}),
+        ]
+        calls = []
+        client = object.__new__(adt.AdtClient)
+        client._request = lambda method, **kwargs: calls.append((method, kwargs)) or responses.pop(0)
+        client._csrf_token = lambda: "safe-token"
+        result = client.preview("SELECT TCODE\nFROM TSTC\nWHERE TCODE = 'NONE'", 1, prefer_post=True)
+        self.assertEqual(result.total_rows, 0)
+        self.assertEqual([call[0] for call in calls], ["POST", "POST"])
+        self.assertIsNone(calls[0][1].get("token"))
+        self.assertEqual(calls[1][1]["token"], "safe-token")
+
+    def test_read_only_validator_accepts_multiline_select(self):
+        adt._validate_compiled_select("SELECT\n  TCODE\nFROM TSTC\nWHERE TCODE = 'SE16N'")
+        for sql in ("SELECT\nTCODE FROM TSTC;", "SELECT\nTCODE FROM TSTC -- unsafe", "UPDATE TSTC SET TCODE = 'X'"):
+            with self.subTest(sql=sql), self.assertRaises(adt.ExportError):
+                adt._validate_compiled_select(sql)
+
+    def test_csrf_token_fetch_validates_redirect_and_missing_token(self):
+        client = object.__new__(adt.AdtClient)
+        client._url = "https://redacted.invalid/sap/bc/adt/datapreview/freestyle"
+        client._connection = SimpleNamespace(client="100", verify=True, timeout_seconds=30)
+        for response in (
+            SimpleNamespace(status_code=302, headers={}),
+            SimpleNamespace(status_code=200, headers={}),
+        ):
+            with self.subTest(status=response.status_code):
+                client._session = SimpleNamespace(get=lambda *args, response=response, **kwargs: response)
+                with self.assertRaises(adt.ExportError) as raised:
+                    client._csrf_token()
+                self.assertEqual(raised.exception.code, "adt_service_unavailable")
+        client._session = SimpleNamespace(
+            get=lambda *args, **kwargs: SimpleNamespace(
+                status_code=405,
+                headers={"x-csrf-token": "safe-token"},
+            )
+        )
+        self.assertEqual(client._csrf_token(), "safe-token")
+
+    def test_query_error_xml_is_sanitized_and_closed_set(self):
+        cases = (
+            ("<error><message>ABAP query line was truncated</message></error>", "query_line_truncated"),
+            ("<error><message>Unknown column BAD_FIELD</message></error>", "query_column_invalid"),
+            ("<error><message>Syntax error near token</message></error>", "query_syntax_invalid"),
+            ("<error><message>Private implementation detail</message></error>", "query_execution_failed"),
+            ("not xml", "query_execution_failed"),
+        )
+        for payload, expected in cases:
+            with self.subTest(expected=expected):
+                error = adt._query_error(400, payload)
+                self.assertEqual(error.code, expected)
+                self.assertNotIn("Private implementation detail", error.message)
 
     def test_output_manifest_hash_matches(self):
         empty_client = lambda _connection: type(

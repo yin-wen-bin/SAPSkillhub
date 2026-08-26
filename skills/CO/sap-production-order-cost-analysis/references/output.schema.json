@@ -17,7 +17,20 @@
     "cost_element_details": {"type": "array", "items": {"type": "object"}},
     "totals": {"type": "object"},
     "relationship_evidence": {"type": "object"},
-    "completeness": {"type": "object"},
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "evidence_complete", "paging_complete", "total_rows", "returned_rows", "requested_row_limit", "truncated"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "evidence_complete": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "total_rows": {"type": ["integer", "null"], "minimum": 0},
+        "returned_rows": {"type": "integer", "minimum": 0},
+        "requested_row_limit": {"const": 10001},
+        "truncated": {"type": "boolean"}
+      }
+    },
     "validation_issues": {"type": "array", "items": {"type": "object"}},
     "started_at": {"type": "string"},
     "completed_at": {"type": "string"},
