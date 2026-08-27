@@ -18,7 +18,7 @@ systems: [SAP S/4HANA, SAP NetWeaver AS ABAP]
 - SAP 用户仅具备目标 ADT Data Preview 只读权限。
 - `/sap/bc/adt/datapreview/freestyle` 已通过 HTTPS 启用。
 - 证书链可信，禁止关闭 TLS 校验。
-- 从 `.env.example` 复制得到的、已被 Git 忽略的 Skill 自有 `.env`，以及仓库外的受保护 profile 文件。profile 文件声明内部 `default_profile`，调用方不能选择或覆盖；动态模式通过实时 DDIC 确认对象、字段、递归展开的 include 结构、类型和真实稳定键。include 循环、过深嵌套或继承字段冲突会在 Data Preview 前安全失败。
+- 从 `.env.example` 复制得到的、已被 Git 忽略的 Skill 自有 `.env`，以及仓库外的受保护 profile 文件。profile 文件声明内部 `default_profile`，调用方不能选择或覆盖；动态模式通过实时 DDIC 确认对象、字段、递归展开的 include 结构、类型和真实稳定键。如果活动透明表、DDIC View 或 include 源端点没有发布，可通过有界的活动版本 DD02L/DD03L 读取重建相同字段/键契约；该补充路径不用于 CDS。include 循环、过深嵌套或继承字段冲突会安全失败。
 - Python 3.10+，并安装 `scripts/requirements.txt` 中已测试的 `requests==2.34.2`（最低接受版本为 2.31.0）。
 
 ## 用法
@@ -40,7 +40,7 @@ python run.py --input input.json --output .artifacts\adt-table-export\output.jso
 
 ## 输出
 
-输出遵循 `references/output.schema.json`，包括运行标识、脱敏后的来源、精确范围、行、行数、完整性、截断、闭集错误码、时间戳和哈希。内部 profile 名、SAP URL、client、凭证和连接路径不会输出。`complete` 只表示这一精确有界选择完整；`partial` 的 `source_complete` 必为 `false`；`failed` 不返回行。
+输出遵循 `references/output.schema.json`，包括运行标识、脱敏后的来源、精确范围、行、行数、完整性、截断、闭集错误码、时间戳和哈希。`source.stable_key` 显示实时稳定键，返回行包含这些可审计支持键，`scope.returned_fields` 声明实际行结构。内部 profile 名、SAP URL、client、凭证和连接路径不会输出。`complete` 只表示这一精确有界选择完整；`partial` 的 `source_complete` 必为 `false`；`failed` 不返回行。
 
 ## 限制与注意事项
 

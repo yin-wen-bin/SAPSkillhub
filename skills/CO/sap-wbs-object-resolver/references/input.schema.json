@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-wbs-object-resolver/input.schema.json",
+  "title": "SAP WBS object resolver input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "wbs_external_id", "company_code"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "wbs_external_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "company_code": {"type": "string", "pattern": "^[A-Za-z0-9]{4}$"}
+  }
+}

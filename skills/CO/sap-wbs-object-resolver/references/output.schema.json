@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-wbs-object-resolver/output.schema.json",
+  "title": "SAP WBS object resolver output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "skill_id", "run_id", "status", "resolution_status", "read_only", "validated", "requested_scope", "resolved_object", "relationship_evidence", "source_profile", "completeness", "validation_issues", "started_at", "completed_at", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-wbs-object-resolver"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "resolution_status": {"enum": ["resolved", "not_found", "ambiguous", "source_unavailable", "invalid_input"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "requested_scope": {"type": "object"},
+    "resolved_object": {"type": ["object", "null"]},
+    "relationship_evidence": {"type": "object"},
+    "source_profile": {"type": "object"},
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "evidence_complete", "paging_complete", "total_rows", "returned_rows", "truncated"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "evidence_complete": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "total_rows": {"type": ["integer", "null"], "minimum": 0},
+        "returned_rows": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "validation_issues": {"type": "array", "items": {"type": "object"}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}}
+  }
+}

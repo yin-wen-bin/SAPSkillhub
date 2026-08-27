@@ -346,6 +346,128 @@ class AdtTableExportTests(unittest.TestCase):
         self.assertTrue(any(item["type"] == "structure_metadata" for item in result["artifacts"]))
         self.assertIn("VFDAT", FakeClient.calls[0][0])
 
+    def test_dynamic_profile_returns_live_stable_key_as_auditable_support_fields(self):
+        FakeClient.metadata_source = (
+            "define table demo { key mandt : mandt; key objnr : char22; amount : curr15; }"
+        )
+        FakeClient.responses = [
+            adt.PreviewResult(
+                columns=("AMOUNT", "MANDT", "OBJNR"),
+                rows=({"AMOUNT": "12.34", "MANDT": "100", "OBJNR": "OR1"},),
+            )
+        ]
+        result = adt.execute(
+            {
+                "schema_version": 1,
+                "source_type": "table",
+                "object": "DEMO",
+                "fields": ["AMOUNT"],
+                "filters": [{"field": "OBJNR", "operator": "eq", "value": "OR1"}],
+                "max_rows": 10,
+            },
+            dynamic_profile(),
+            client_factory=FakeClient,
+            internal_values=self.internal_values,
+        )
+
+        self.assertEqual(result["source"]["stable_key"], ["MANDT", "OBJNR"])
+        self.assertEqual(result["scope"]["returned_fields"], ["AMOUNT", "MANDT", "OBJNR"])
+        self.assertEqual(result["rows"], [{"AMOUNT": "12.34", "MANDT": "100", "OBJNR": "OR1"}])
+
+    def test_table_metadata_404_uses_bounded_active_ddic_fallback(self):
+        client = object.__new__(adt.AdtClient)
+        client._metadata_get = mock.Mock(
+            side_effect=adt.ExportError("metadata_unavailable", "SAP ADT metadata is unavailable (HTTP 404).")
+        )
+        client.preview = mock.Mock(
+            side_effect=[
+                adt.PreviewResult(
+                    columns=("TABNAME", "TABCLASS", "AS4LOCAL", "AS4VERS"),
+                    rows=({"TABNAME": "PRPS", "TABCLASS": "TRANSP", "AS4LOCAL": "A", "AS4VERS": "0000"},),
+                ),
+                adt.PreviewResult(
+                    columns=("TABNAME", "FIELDNAME", "KEYFLAG", "POSITION", "ROLLNAME", "DATATYPE"),
+                    rows=(
+                        {"TABNAME": "PRPS", "FIELDNAME": "PSPNR", "KEYFLAG": "X", "POSITION": "2", "ROLLNAME": "PS_PSP_PNR", "DATATYPE": "NUMC"},
+                        {"TABNAME": "PRPS", "FIELDNAME": "MANDT", "KEYFLAG": "X", "POSITION": "1", "ROLLNAME": "MANDT", "DATATYPE": "CLNT"},
+                        {"TABNAME": "PRPS", "FIELDNAME": ".INCLUDE", "KEYFLAG": "", "POSITION": "3", "ROLLNAME": "", "DATATYPE": ""},
+                    ),
+                ),
+            ]
+        )
+
+        source, path = client.metadata("table", "PRPS")
+        details = adt.parse_live_metadata_details("table", source)
+
+        self.assertEqual(details.stable_key, ("MANDT", "PSPNR"))
+        self.assertEqual(set(details.fields), {"MANDT", "PSPNR"})
+        self.assertEqual(path, "ddic-fallback:prps")
+        self.assertEqual(client.preview.call_count, 2)
+
+    def test_table_metadata_404_accepts_one_active_ddic_view(self):
+        client = object.__new__(adt.AdtClient)
+        client._metadata_get = mock.Mock(
+            side_effect=adt.ExportError("metadata_unavailable", "SAP ADT metadata is unavailable (HTTP 404).")
+        )
+        client.preview = mock.Mock(
+            side_effect=[
+                adt.PreviewResult(
+                    columns=("TABNAME", "TABCLASS", "AS4LOCAL", "AS4VERS"),
+                    rows=({"TABNAME": "COSP", "TABCLASS": "VIEW", "AS4LOCAL": "A", "AS4VERS": "0000"},),
+                ),
+                adt.PreviewResult(
+                    columns=("TABNAME", "FIELDNAME", "KEYFLAG", "POSITION", "ROLLNAME", "DATATYPE"),
+                    rows=(
+                        {"TABNAME": "COSP", "FIELDNAME": "MANDT", "KEYFLAG": "X", "POSITION": "1", "ROLLNAME": "MANDT", "DATATYPE": "CLNT"},
+                        {"TABNAME": "COSP", "FIELDNAME": "OBJNR", "KEYFLAG": "X", "POSITION": "2", "ROLLNAME": "J_OBJNR", "DATATYPE": "CHAR"},
+                        {"TABNAME": "COSP", "FIELDNAME": "WTG001", "KEYFLAG": "", "POSITION": "3", "ROLLNAME": "CO_WTGXXX", "DATATYPE": "CURR"},
+                    ),
+                ),
+            ]
+        )
+
+        source, path = client.metadata("table", "COSP")
+        details = adt.parse_live_metadata_details("table", source)
+
+        self.assertEqual(details.stable_key, ("MANDT", "OBJNR"))
+        self.assertEqual(set(details.fields), {"MANDT", "OBJNR", "WTG001"})
+        self.assertEqual(path, "ddic-fallback:cosp")
+
+    def test_missing_include_source_uses_flattened_ddic_fallback(self):
+        class IncludeFallbackClient(FakeClient):
+            metadata_source = "define table demo { key mandt : mandt; include missing_structure; }"
+
+            def structure_metadata(self, name):
+                raise adt.ExportError("metadata_unavailable", "SAP ADT metadata is unavailable (HTTP 404).")
+
+            def table_metadata_fallback(self, object_name):
+                return (
+                    "define table demo { key mandt : abap.clnt; key objnr : abap.char; amount : abap.curr; }",
+                    "ddic-fallback:demo",
+                )
+
+        IncludeFallbackClient.responses = [
+            adt.PreviewResult(
+                columns=("AMOUNT", "MANDT", "OBJNR"),
+                rows=({"AMOUNT": "1.00", "MANDT": "100", "OBJNR": "OR1"},),
+            )
+        ]
+        result = adt.execute(
+            {
+                "schema_version": 1,
+                "source_type": "table",
+                "object": "DEMO",
+                "fields": ["AMOUNT"],
+                "filters": [{"field": "OBJNR", "operator": "eq", "value": "OR1"}],
+                "max_rows": 10,
+            },
+            dynamic_profile(),
+            client_factory=IncludeFallbackClient,
+            internal_values=self.internal_values,
+        )
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["source"]["stable_key"], ["MANDT", "OBJNR"])
+
     def test_dynamic_profile_rejects_recursive_ddic_include_cycle(self):
         FakeClient.metadata_source = (
             "define table mch1 { key mandt : mandt; key matnr : matnr; "
@@ -639,6 +761,22 @@ class AdtTableExportTests(unittest.TestCase):
         self.assertEqual([call[0] for call in calls], ["POST", "POST"])
         self.assertIsNone(calls[0][1].get("token"))
         self.assertEqual(calls[1][1]["token"], "safe-token")
+
+    def test_get_query_parser_failure_retries_identical_read_only_post_once(self):
+        xml = '<table totalRows="0"><columns><metadata name="AMOUNT"/><dataSet/></columns></table>'
+        responses = [
+            SimpleNamespace(status_code=400, text="<error><message>Unknown column AMOUNT</message></error>", headers={}),
+            SimpleNamespace(status_code=200, text=xml, headers={}),
+        ]
+        calls = []
+        client = object.__new__(adt.AdtClient)
+        client._request = lambda method, **kwargs: calls.append((method, kwargs)) or responses.pop(0)
+
+        result = client.preview("SELECT AMOUNT FROM DEMO WHERE OBJNR = 'OR1'", 1)
+
+        self.assertEqual(result.total_rows, 0)
+        self.assertEqual([call[0] for call in calls], ["GET", "POST"])
+        self.assertEqual(calls[0][1]["sql"], calls[1][1]["sql"])
 
     def test_read_only_validator_accepts_multiline_select(self):
         adt._validate_compiled_select("SELECT\n  TCODE\nFROM TSTC\nWHERE TCODE = 'SE16N'")

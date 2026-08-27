@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-control-object-commitment-evidence/output.schema.json",
+  "title": "SAP control object commitment evidence output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "skill_id", "run_id", "status", "read_only", "validated", "resolved_object", "analysis_scope", "relationship_evidence", "source_profile", "commitment_details", "commitment_totals", "completeness", "validation_issues", "started_at", "completed_at", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-control-object-commitment-evidence"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "resolved_object": {"type": "object"},
+    "analysis_scope": {"type": "object"},
+    "relationship_evidence": {"type": "object"},
+    "source_profile": {"type": "object"},
+    "commitment_details": {"type": "array", "items": {"type": "object"}},
+    "commitment_totals": {"type": ["object", "null"]},
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "evidence_complete", "paging_complete", "scope_complete", "total_rows", "returned_rows", "truncated"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "evidence_complete": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "scope_complete": {"type": "boolean"},
+        "total_rows": {"type": ["integer", "null"], "minimum": 0},
+        "returned_rows": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "validation_issues": {"type": "array", "items": {"type": "object"}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}}
+  }
+}

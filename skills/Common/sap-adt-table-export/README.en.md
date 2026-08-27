@@ -18,7 +18,7 @@ Use it after a released API or OData service cannot supply a required field, and
 - An SAP user authorized only for the intended ADT Data Preview reads.
 - Active `/sap/bc/adt/datapreview/freestyle` over HTTPS.
 - Valid certificate trust; TLS verification cannot be disabled.
-- An ignored `.env` copied from `.env.example` and a protected profiles file based on `references/profiles.example.json`. The profiles file declares `default_profile`; callers cannot select it. Dynamic mode confirms objects, fields, recursively expanded include structures, literal types, and true stable keys from live DDIC metadata. Include cycles, excessive nesting, and conflicting inherited fields fail closed.
+- An ignored `.env` copied from `.env.example` and a protected profiles file based on `references/profiles.example.json`. The profiles file declares `default_profile`; callers cannot select it. Dynamic mode confirms objects, fields, recursively expanded include structures, literal types, and true stable keys from live DDIC metadata. If an active transparent table, DDIC view, or include-source endpoint is unpublished, bounded active-version DD02L/DD03L reads may reconstruct the same field/key contract. This fallback is never used for CDS. Include cycles, excessive nesting, and conflicting inherited fields fail closed.
 - Python 3.10+ and the tested `requests==2.34.2` baseline from `scripts/requirements.txt` (minimum accepted: 2.31.0).
 
 ## Usage
@@ -40,7 +40,7 @@ The input schema is `references/input.schema.json`. Task input contains only `ta
 
 ## Outputs
 
-The output follows `references/output.schema.json`: run identifier, sanitized source identity, exact bounded scope, rows, row count, completeness, truncation, closed-set validation issues, timestamps, and hashes. Internal profile names, SAP URLs, client, credentials and connection paths are omitted. `complete` applies only to that exact bounded selection. `partial` always has `source_complete=false`; `failed` contains no rows.
+The output follows `references/output.schema.json`: run identifier, sanitized source identity, exact bounded scope, rows, row count, completeness, truncation, closed-set validation issues, timestamps, and hashes. `source.stable_key` exposes the live key, those columns are returned as auditable support fields, and `scope.returned_fields` declares the exact row shape. Internal profile names, SAP URLs, client, credentials and connection paths are omitted. `complete` applies only to that exact bounded selection. `partial` always has `source_complete=false`; `failed` contains no rows.
 
 ## Limitations
 

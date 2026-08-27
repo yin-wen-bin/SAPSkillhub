@@ -1,0 +1,6 @@
+interface:
+  display_name: "SAP WBS Object Resolver"
+  short_description: "Resolve one WBS ID to authoritative SAP control-object keys"
+  default_prompt: "Use $sap-wbs-object-resolver to resolve one external WBS ID through fixed read-only SAP sources."
+policy:
+  allow_implicit_invocation: true

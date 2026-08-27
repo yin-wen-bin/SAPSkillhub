@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "skill_id": "sap-control-object-commitment-evidence",
+  "read_only": true,
+  "validated": false,
+  "entrypoint": "python run.py --input input.json --output output.json",
+  "input_schema": "references/input.schema.json",
+  "output_schema": "references/output.schema.json",
+  "timeout_seconds": 180,
+  "requires_target_system_validation": true,
+  "allowed_http_methods": ["POST"],
+  "allowed_endpoints": [],
+  "profile_version": "2026-08-27.2",
+  "metadata_sha256": null,
+  "profile_status": "unvalidated"
+}

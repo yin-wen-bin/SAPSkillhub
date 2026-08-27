@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "profile_version": "2026-08-27.2",
+  "profile_status": "unvalidated",
+  "sources": {
+    "WBS": {
+      "enabled": false,
+      "source_id": "project_commitment_soap",
+      "reason": "target_soap_binding_unavailable",
+      "operation": "ProjectCommitmentLedgerAccountERPLineItemByElementsQueryResponse_In",
+      "wsd_backend": "ECC_ProjCmtmtLdgAcctItmByEQR",
+      "endpoint_path": null,
+      "soap_action": null,
+      "approved_read_action": null,
+      "operation_namespace": null,
+      "metadata_sha256": null,
+      "period_semantics": "fiscal_year_accounting_period",
+      "page_size": 1000,
+      "max_rows": 10000,
+      "request_mapping": {
+        "project_element_id": "ProjectElementID",
+        "fiscal_year": "FiscalYear",
+        "period_from": "AccountingPeriodFrom",
+        "period_to": "AccountingPeriodTo"
+      },
+      "pagination": {
+        "mode": "continuation",
+        "page_size_element": null,
+        "request_token_element": null,
+        "response_token_element": null,
+        "more_data_element": null
+      },
+      "stable_key": ["source_key"],
+      "value_type_mapping": {
+        "21": {"derivation": "purchase_requisition_reference"},
+        "22": {"derivation": "purchase_order_reference"},
+        "24": {"derivation": "explicit_source_value", "source_value": "24"},
+        "26": {"derivation": "explicit_source_value", "source_value": "26"}
+      }
+    },
+    "INTERNAL_ORDER": {
+      "enabled": false,
+      "source_id": "internal_order_commitment_unavailable",
+      "reason": "period_amount_projection_unstable",
+      "period_semantics": "fiscal_year_accounting_period",
+      "value_type_mapping": {},
+      "probe": {
+        "objects": ["COSP", "COSS"],
+        "sample": "OR********0468",
+        "fiscal_year": "2026",
+        "observed_value_type": "22",
+        "observed_ledger": "00",
+        "observed_currency": "CNY",
+        "amount_projection_status": "unstable_unknown_column_vers",
+        "authoritative_baseline_match": false
+      }
+    }
+  },
+  "disabled_candidates": {
+    "COOI": "amount_columns_not_validated",
+    "COSP_COSS": "period_amount_projection_unstable_and_not_reconciled",
+    "cost_center_commitment_services": "object_scope_not_authoritative",
+    "commitment_item_service": "master_data_not_open_commitment_evidence"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "skill_id": "sap-wbs-object-resolver",
+  "read_only": true,
+  "validated": true,
+  "entrypoint": "python run.py --input input.json --output output.json",
+  "input_schema": "references/input.schema.json",
+  "output_schema": "references/output.schema.json",
+  "timeout_seconds": 120,
+  "requires_target_system_validation": true,
+  "allowed_http_methods": ["GET"],
+  "allowed_endpoints": [
+    "/sap/opu/odata/sap/API_PROJECT_V2/$metadata",
+    "/sap/opu/odata/sap/API_PROJECT_V2/WBSElement",
+    "/sap/opu/odata/sap/API_FINWBSELEMENT_SRV/$metadata",
+    "/sap/opu/odata/sap/API_FINWBSELEMENT_SRV/A_FinWBSElement"
+  ]
+}

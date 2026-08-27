@@ -1,4 +1,5 @@
 import path from "node:path";
+import { existsSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // The validator is plain ESM so CI and local users can run it directly with Node.
 import {
@@ -41,8 +42,15 @@ describe("skill content contract", () => {
   it("validates the real repository", () => {
     const skillsRoot = path.resolve(import.meta.dirname, "..", "..", "skills");
     const result = validateRepository(skillsRoot);
+    const expectedCount = readdirSync(skillsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((module) =>
+        readdirSync(path.join(skillsRoot, module.name), { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .filter((entry) => existsSync(path.join(skillsRoot, module.name, entry.name, "SKILL.md"))),
+      ).length;
     expect(result.errors).toEqual([]);
-    expect(result.skillCount).toBe(8);
+    expect(result.skillCount).toBe(expectedCount);
   });
 
   it("rejects a missing localized section", () => {

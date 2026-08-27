@@ -74,6 +74,7 @@ ALLOWED_FIELD_TYPES = {"string", "integer", "decimal", "date", "time", "boolean"
 MAX_EXPORT_ROWS = 30000
 MAX_PREVIEW_PAGE_SIZE = 10000
 MAX_INCLUDE_DEPTH = 8
+DDIC_FALLBACK_MAX_FIELDS = 2000
 WRITE_TOKENS = {
     "INSERT",
     "UPDATE",
@@ -792,7 +793,83 @@ class AdtClient:
             path = f"{CDS_METADATA_PREFIX}{encoded}/source/main"
         else:
             raise ExportError("unsupported_system", "Unsupported ADT metadata source type.")
-        return self._metadata_get(path, "text/plain")
+        try:
+            return self._metadata_get(path, "text/plain")
+        except ExportError as exc:
+            if source_type != "table" or exc.code != "metadata_unavailable" or "HTTP 404" not in str(exc):
+                raise
+            return self._table_metadata_from_ddic(object_name)
+
+    def _table_metadata_from_ddic(self, object_name: str) -> tuple[str, str]:
+        """Reconstruct active table/view metadata when source/main is unpublished."""
+
+        if not OBJECT_IDENTIFIER.fullmatch(object_name.upper()):
+            raise ExportError("metadata_unavailable", "The DDIC fallback received an invalid table identifier.")
+        escaped = object_name.upper().replace("'", "''")
+        table_sql = (
+            "SELECT TABNAME, TABCLASS, AS4LOCAL, AS4VERS\n"
+            "FROM DD02L\n"
+            f"WHERE TABNAME = '{escaped}' AND AS4LOCAL = 'A' AND AS4VERS = '0000'"
+        )
+        _validate_compiled_select(table_sql)
+        table_preview = self.preview(table_sql, 3)
+        if tuple(name.upper() for name in table_preview.columns) != (
+            "TABNAME", "TABCLASS", "AS4LOCAL", "AS4VERS"
+        ):
+            raise ExportError("metadata_unavailable", "The DDIC fallback table metadata shape is invalid.")
+        active_objects = [
+            row
+            for row in table_preview.rows
+            if str(row.get("TABNAME") or "").upper() == object_name.upper()
+            and str(row.get("TABCLASS") or "").upper() in {"TRANSP", "VIEW"}
+        ]
+        if len(active_objects) != 1:
+            raise ExportError(
+                "metadata_unavailable",
+                "The DDIC fallback did not confirm one active transparent table or DDIC view.",
+            )
+
+        fields_sql = (
+            "SELECT TABNAME, FIELDNAME, KEYFLAG, POSITION, ROLLNAME, DATATYPE\n"
+            "FROM DD03L\n"
+            f"WHERE TABNAME = '{escaped}' AND AS4LOCAL = 'A' AND AS4VERS = '0000'"
+        )
+        _validate_compiled_select(fields_sql)
+        fields_preview = self.preview(fields_sql, DDIC_FALLBACK_MAX_FIELDS + 1)
+        if tuple(name.upper() for name in fields_preview.columns) != (
+            "TABNAME", "FIELDNAME", "KEYFLAG", "POSITION", "ROLLNAME", "DATATYPE"
+        ):
+            raise ExportError("metadata_unavailable", "The DDIC fallback field metadata shape is invalid.")
+        if len(fields_preview.rows) > DDIC_FALLBACK_MAX_FIELDS or (
+            fields_preview.total_rows is not None
+            and fields_preview.total_rows > len(fields_preview.rows)
+        ):
+            raise ExportError("metadata_unavailable", "The DDIC fallback field list exceeded its safe bound.")
+        ordered = sorted(
+            fields_preview.rows,
+            key=lambda row: int(str(row.get("POSITION") or "0")),
+        )
+        definitions: list[str] = []
+        for row in ordered:
+            field = str(row.get("FIELDNAME") or "").strip().upper()
+            if not FIELD_IDENTIFIER.fullmatch(field):
+                continue
+            data_type = str(row.get("DATATYPE") or "CHAR").strip().lower()
+            # DD03L already supplies the active primitive type. Encoding that
+            # type directly avoids depending on a separately published data-
+            # element endpoint when source/main itself is unavailable.
+            type_expression = f"abap.{data_type}"
+            key_prefix = "key " if str(row.get("KEYFLAG") or "").strip().upper() == "X" else ""
+            definitions.append(f"  {key_prefix}{field.lower()} : {type_expression};")
+        if not definitions:
+            raise ExportError("metadata_unavailable", "The DDIC fallback returned no usable table fields.")
+        source = f"define table {object_name.lower()} {{\n" + "\n".join(definitions) + "\n}"
+        return source, f"ddic-fallback:{object_name.lower()}"
+
+    def table_metadata_fallback(self, object_name: str) -> tuple[str, str]:
+        """Expose the same protected DDIC fallback for missing include metadata."""
+
+        return self._table_metadata_from_ddic(object_name)
 
     def structure_metadata(self, name: str) -> tuple[str, str]:
         if not FIELD_IDENTIFIER.fullmatch(name.upper()):
@@ -905,6 +982,13 @@ class AdtClient:
                 response = self._request("GET", row_number=row_number, sql=sql)
                 if response.status_code == 405:
                     response = self._request("POST", row_number=row_number, sql=sql)
+                elif response.status_code in {400, 422}:
+                    get_error = _query_error(response.status_code, response.text)
+                    if get_error.code in {"query_column_invalid", "query_execution_failed"}:
+                        # Older ADT stacks can misparse otherwise valid encoded
+                        # GET queries. Retry the identical validated SELECT once
+                        # as a read-only POST; no query or bound is weakened.
+                        response = self._request("POST", row_number=row_number, sql=sql)
             if response.status_code == 403 and "csrf" in response.text.lower():
                 response = self._request(
                     "POST",
@@ -1169,6 +1253,8 @@ def _scope(request: PreparedRequest) -> dict[str, Any]:
         "source_type": request.source_type,
         "object": request.object_name,
         "fields": list(request.fields),
+        "returned_fields": list(dict.fromkeys([*request.fields, *request.object_spec.stable_key])),
+        "stable_key": list(request.object_spec.stable_key),
         "filters": filters,
         "order_by": [{"field": field, "direction": direction.lower()} for field, direction in request.order_by],
         "max_rows": request.max_rows,
@@ -1214,11 +1300,27 @@ def execute(
         source_type, object_name, profile = _task_identity(task, profiles, trusted_values)
         client = client_factory(profile.connection)
         metadata_source, _metadata_path = client.metadata(source_type, object_name)
-        live_metadata, structure_metadata_hashes = expand_live_metadata(
-            client,
-            source_type,
-            metadata_source,
-        )
+        try:
+            live_metadata, structure_metadata_hashes = expand_live_metadata(
+                client,
+                source_type,
+                metadata_source,
+            )
+        except ExportError as exc:
+            fallback = getattr(client, "table_metadata_fallback", None)
+            if (
+                source_type != "table"
+                or not callable(fallback)
+                or exc.code != "metadata_unavailable"
+                or "HTTP 404" not in str(exc)
+            ):
+                raise
+            metadata_source, _metadata_path = fallback(object_name)
+            live_metadata, structure_metadata_hashes = expand_live_metadata(
+                client,
+                source_type,
+                metadata_source,
+            )
         type_metadata_hashes: list[str] = []
         if profile.dynamic_objects:
             requested_type_fields = [
@@ -1246,6 +1348,7 @@ def execute(
             "source_type": request.source_type,
             "object": request.object_name,
             "fields": list(request.fields),
+            "stable_key": list(request.object_spec.stable_key),
         }
         base["scope"] = _scope(request)
         live_fields = set(live_metadata.fields)
@@ -1306,7 +1409,10 @@ def execute(
                 if any(isinstance(value, int) for value in numeric) and any(right != left + 1 for left, right in zip(numeric, numeric[1:])):
                     raise ExportError("paging_incomplete", "ADT paging produced a missing contiguous key.")
             seen_keys.update(page_keys)
-            output_rows.extend({field: row.get(field, "") for field in request.fields} for row in keep)
+            output_rows.extend(
+                {field: row.get(field, "") for field in expected_columns}
+                for row in keep
+            )
             if len(preview.rows) <= page_size:
                 complete = True
                 break

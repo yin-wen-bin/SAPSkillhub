@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "profile_version": "2026-08-27.1",
+  "case_insensitive_external_id": false,
+  "sources": [
+    {
+      "id": "project_v2_exact",
+      "enabled": true,
+      "technical_service": "ZAPI_PROJECT_V2",
+      "service": "API_PROJECT_V2",
+      "entity_set": "WBSElement",
+      "metadata_sha256": "fc5ef5bb2fd7a028626c6eb375850be0e8ef6737f3f48f97c103e1c47e67800a",
+      "external_id_field": "WBSElementExternalID",
+      "fields": ["WBSElementInternalID", "WBSElementExternalID", "CompanyCode", "ControllingArea", "ProjectInternalID"],
+      "stable_key": ["WBSElementInternalID"],
+      "page_size": 2,
+      "max_rows": 2
+    },
+    {
+      "id": "financial_wbs_exact",
+      "enabled": true,
+      "technical_service": "ZAPI_FINWBSELEMENT_SRV",
+      "service": "API_FINWBSELEMENT_SRV",
+      "entity_set": "A_FinWBSElement",
+      "metadata_sha256": "a773cd4efdab0ef1b6aa250aa1d7cbfd292d9d7cc0e662e2ab52d0da9e88448d",
+      "external_id_field": "WBSElement",
+      "fields": ["WBSElementInternalID", "WBSElement", "WBSElementObject", "CompanyCode", "ControllingArea", "ProjectInternalID", "Project"],
+      "stable_key": ["WBSElementInternalID"],
+      "page_size": 2,
+      "max_rows": 2
+    }
+  ],
+  "fallbacks": {
+    "released_wbs_cds": {"enabled": false, "reason": "target_profile_not_validated"},
+    "adt_prps_proj": {"enabled": false, "reason": "target_profile_not_validated"}
+  }
+}

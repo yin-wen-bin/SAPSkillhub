@@ -1,0 +1,9 @@
+# Target capability validation — 2026-08-27
+
+The SAP Help contract for `ProjectCommitmentLedgerAccountERPLineItemByElementsQueryResponse_In` proves a synchronous read operation with fiscal year/accounting period selection, COOI-backed line items, remainder amounts, purchasing references, currencies, and bounded continuation semantics for value types 21, 22, 24, and 26.
+
+On the target system, `/sap/bc/srt/wsil` was readable but exposed no callable Project Commitment binding. Gateway candidates were cost-center commitment services or commitment-item master data and were not accepted as authoritative WBS/internal-order open-commitment evidence. The runtime now requires the external WBS identifier expected by the standard service, an approved action/endpoint, and explicit continuation mappings before activation.
+
+For internal orders, live DDIC proved `COSP` and `COSS` are active compatibility views. A masked internal-order sample returned one complete `COSP` key row for value type `22`, ledger `00`, and company-code currency `CNY`; `COSS` returned a complete empty key result. Period amount projection was not stable: selecting `WTG001` intermittently succeeded once but repeatedly failed with SAP ADT `Unknown column name "VERS"`. `COSP_BAK`/`COSS_BAK` were not accepted as authoritative substitutes, and no result was reconciled against a direct SAP cost-element/period baseline. COOI amount columns remain disabled as well.
+
+Result: both runtime sources remain disabled. WBS object resolution is independently supported by `sap-wbs-object-resolver`; commitment evidence remains fail-closed until a concrete WBS binding and a stable internal-order period source have metadata fingerprints, mappings, paging behavior, and matching nonzero/zero baselines. A successful key-only query is not treated as amount evidence.

@@ -1,0 +1,6 @@
+interface:
+  display_name: "SAP Control Object Commitment Evidence"
+  short_description: "Read strict WBS or internal-order commitment evidence"
+  default_prompt: "Use $sap-control-object-commitment-evidence to read bounded, auditable commitment evidence for one resolved SAP control object."
+policy:
+  allow_implicit_invocation: true
