@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "active_profile_id": "s4-2026-09-bank-receipt-adt-v1",
+  "profile_version": "2026-09-03.1",
+  "profile_status": "unvalidated",
+  "profiles": {
+    "s4-2026-09-bank-receipt-adt-v1": {
+      "enabled": false,
+      "source_id": "bank_statement_item_adt_v1",
+      "source_type": "cds",
+      "object": "I_ArBankStatementItem",
+      "dependency_object": "P_ARBankStatementItemIDBS",
+      "date_basis": "value_date",
+      "date_field": "ValueDate",
+      "business_timezone": "Asia/Shanghai",
+      "credit_filter": {
+        "field": "DebitCreditCode",
+        "value": "H"
+      },
+      "reference_filter": {
+        "field": "BankReference",
+        "operator": "EQ"
+      },
+      "stable_key": ["BankStatementShortID", "BankStatementItem"],
+      "page_size": 1000,
+      "max_rows": 30000,
+      "metadata_sha256": "03232d2f8a5ba02f3647a36002d85ad20d4045a38c03307ba4aabbe8c51c6e46",
+      "dependency_metadata_sha256": {
+        "P_ARBankStatementItemIDBS": "9c16a1abc244570203354c4e2052a0fea02775c9430d715ada5344542f1e30a5"
+      },
+      "required_fields": [
+        "BankStatementShortID",
+        "BankStatementItem",
+        "CompanyCode",
+        "ValueDate",
+        "PostingDate",
+        "AmountInTransactionCurrency",
+        "TransactionCurrency",
+        "DebitCreditCode",
+        "BankStatementStatus",
+        "BankStatementItemLifeCycSts",
+        "IsCompleted",
+        "IsInProcess",
+        "PostingErrorStatus",
+        "BankLedgerDocument",
+        "SubledgerDocument",
+        "FiscalYear",
+        "BusinessPartnerName",
+        "PartnerBankAccount",
+        "PartnerBankIBAN",
+        "BankReference"
+      ],
+      "reversal_status_mapping": {
+        "": "not_reversed",
+        "0": "not_reversed",
+        "2": "not_reversed",
+        "7": "not_reversed",
+        "8": "not_reversed",
+        "P": "not_reversed",
+        "A": "not_reversed",
+        "S": "not_reversed",
+        "R": "reversed",
+        "Q": "reversal_in_process",
+        "E": "reversal_failed"
+      },
+      "allowed_lifecycle_statuses": ["", "R", "G"],
+      "hash_key_id": "bank-receipt-hmac-v1"
+    }
+  },
+  "disabled_candidates": {
+    "I_BankStatementItem": "missing_debit_credit_indicator_and_excludes_reversed_bank_statements",
+    "API_CN_BANK_RECONCILIAITON_SRV": "unmatched_bank_reconciliation_items_only",
+    "API_PAYMENT_ADVICE_SRV": "payment_advice_is_not_bank_receipt_evidence"
+  }
+}

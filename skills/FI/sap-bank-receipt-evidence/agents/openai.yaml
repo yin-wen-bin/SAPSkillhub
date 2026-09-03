@@ -1,0 +1,6 @@
+interface:
+  display_name: "SAP Bank Receipt Evidence"
+  short_description: "Read bounded bank-statement receipt evidence"
+  default_prompt: "Use $sap-bank-receipt-evidence to read bounded, auditable SAP bank receipt evidence without matching customers or invoices."
+policy:
+  allow_implicit_invocation: true

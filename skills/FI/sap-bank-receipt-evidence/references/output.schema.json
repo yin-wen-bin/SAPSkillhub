@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-bank-receipt-evidence/output.schema.json",
+  "title": "SAP bank receipt evidence output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "skill_id", "run_id", "status", "evidence_status", "read_only", "validated",
+    "requested_scope", "receipts", "currency_summaries", "source_profile", "completeness",
+    "validation_issues", "started_at", "completed_at", "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-bank-receipt-evidence"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "evidence_status": {"enum": ["available", "not_found", "source_unavailable", "invalid_input"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "requested_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "company_code": {"type": "string"},
+        "date_basis": {"const": "value_date"},
+        "date_from": {"type": "string", "format": "date"},
+        "date_to": {"type": "string", "format": "date"},
+        "receipt_reference_supplied": {"type": "boolean"}
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statement_id", "statement_item", "value_date", "posting_date", "amount", "currency",
+          "credit_debit_indicator", "reversal_status", "posting_status", "related_accounting_document",
+          "payer_name", "payer_account_masked", "payer_account_hash", "bank_reference"
+        ],
+        "properties": {
+          "statement_id": {"type": "string", "minLength": 1},
+          "statement_item": {"type": "string", "minLength": 1},
+          "value_date": {"type": "string", "format": "date"},
+          "posting_date": {"type": ["string", "null"], "format": "date"},
+          "amount": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"},
+          "currency": {"type": "string", "minLength": 1},
+          "credit_debit_indicator": {"const": "credit"},
+          "reversal_status": {"enum": ["not_reversed", "reversed", "reversal_in_process", "reversal_failed"]},
+          "posting_status": {"enum": ["completed", "in_process", "not_completed", "posting_failed"]},
+          "related_accounting_document": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["bank_ledger_document", "subledger_document", "fiscal_year"],
+                "properties": {
+                  "bank_ledger_document": {"type": ["string", "null"]},
+                  "subledger_document": {"type": ["string", "null"]},
+                  "fiscal_year": {"type": "string", "minLength": 1}
+                }
+              }
+            ]
+          },
+          "payer_name": {"type": ["string", "null"]},
+          "payer_account_masked": {"type": ["string", "null"], "pattern": "^\\*{4}(?:.{4})?$"},
+          "payer_account_hash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "bank_reference": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "currency_summaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["currency", "active_receipt_count", "active_receipt_amount", "reversed_receipt_count", "reversed_receipt_amount"],
+        "properties": {
+          "currency": {"type": "string", "minLength": 1},
+          "active_receipt_count": {"type": "integer", "minimum": 0},
+          "active_receipt_amount": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"},
+          "reversed_receipt_count": {"type": "integer", "minimum": 0},
+          "reversed_receipt_amount": {"type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"}
+        }
+      }
+    },
+    "source_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "version", "status", "source_id", "date_basis", "hash_key_id", "profile_sha256", "metadata_sha256"],
+      "properties": {
+        "profile_id": {"type": "string"},
+        "version": {"type": "string"},
+        "status": {"type": "string"},
+        "source_id": {"type": "string"},
+        "date_basis": {"type": "string"},
+        "hash_key_id": {"type": "string"},
+        "profile_sha256": {"type": "string"},
+        "metadata_sha256": {"type": "string"}
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "evidence_complete", "paging_complete", "total_rows", "returned_rows", "truncated"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "evidence_complete": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "total_rows": {"type": ["integer", "null"], "minimum": 0},
+        "returned_rows": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "validation_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "http_status_category": {"type": "string"}
+        }
+      }
+    },
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "sha256"],
+        "properties": {
+          "type": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

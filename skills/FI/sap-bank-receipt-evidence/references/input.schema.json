@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-bank-receipt-evidence/input.schema.json",
+  "title": "SAP bank receipt evidence input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "company_code", "date_from", "date_to"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "company_code": {"type": "string", "pattern": "^[A-Z0-9]{4}$"},
+    "date_from": {"type": "string", "format": "date"},
+    "date_to": {"type": "string", "format": "date"},
+    "receipt_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 35,
+      "pattern": "^[^*?%\\u0000-\\u001F\\u007F]+$"
+    }
+  }
+}
