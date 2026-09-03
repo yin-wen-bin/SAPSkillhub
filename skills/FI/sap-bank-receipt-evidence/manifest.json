@@ -2,7 +2,7 @@
   "schema_version": 1,
   "skill_id": "sap-bank-receipt-evidence",
   "read_only": true,
-  "validated": false,
+  "validated": true,
   "entrypoint": "python run.py --input input.json --output output.json",
   "input_schema": "references/input.schema.json",
   "output_schema": "references/output.schema.json",
@@ -13,6 +13,6 @@
     "/sap/bc/adt/datapreview/freestyle",
     "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main"
   ],
-  "profile_version": "2026-09-03.1",
-  "profile_status": "unvalidated"
+  "profile_version": "2026-09-03.2",
+  "profile_status": "validated"
 }

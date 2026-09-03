@@ -409,7 +409,7 @@ class BankReceiptEvidenceTests(unittest.TestCase):
                 self.assertNotIn(secret, manifest)
             self.assertEqual(json.loads(manifest)["output_sha256"], hashlib.sha256(output.read_bytes()).hexdigest())
 
-    def test_manifest_schema_and_profile_are_fail_closed(self):
+    def test_manifest_schema_and_profile_are_validated_and_narrow(self):
         skill = MODULE_PATH.parents[1]
         manifest = json.loads((skill / "manifest.json").read_text(encoding="utf-8"))
         input_schema = json.loads((skill / "references" / "input.schema.json").read_text(encoding="utf-8"))
@@ -417,26 +417,22 @@ class BankReceiptEvidenceTests(unittest.TestCase):
         source_profiles = json.loads((skill / "references" / "source-profiles.json").read_text(encoding="utf-8"))
         active = source_profiles["profiles"][source_profiles["active_profile_id"]]
         self.assertTrue(manifest["read_only"])
-        self.assertFalse(manifest["validated"])
+        self.assertTrue(manifest["validated"])
         self.assertEqual(manifest["allowed_http_methods"], ["GET", "POST"])
         self.assertNotIn("connection", input_schema["properties"])
         self.assertNotIn("url", input_schema["properties"])
         self.assertNotIn("sql", input_schema["properties"])
-        self.assertFalse(active["enabled"])
-        self.assertEqual(source_profiles["profile_status"], "unvalidated")
+        self.assertTrue(active["enabled"])
+        self.assertEqual(source_profiles["profile_status"], "validated")
+        self.assertEqual(manifest["profile_version"], source_profiles["profile_version"])
         self.assertIn("requested_scope", output_schema["properties"])
         self.assertIn("validated", output_schema["properties"])
 
-    def test_public_entrypoint_returns_unvalidated_without_sap(self):
-        (ROOT / ".codex-tmp").mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=ROOT / ".codex-tmp") as directory:
-            input_path = Path(directory) / "input.json"
-            output_path = Path(directory) / "output.json"
-            input_path.write_text(json.dumps(_task()), encoding="utf-8")
-            self.assertEqual(MODULE.main(["--input", str(input_path), "--output", str(output_path)]), 0)
-            result = json.loads(output_path.read_text(encoding="utf-8"))
-            self.assertEqual(result["status"], "partial")
-            self.assertEqual(result["validation_issues"][0]["code"], "profile_unvalidated")
+    def test_packaged_profile_loads_as_validated(self):
+        profile = MODULE._load_profile()
+        self.assertTrue(profile["enabled"])
+        self.assertEqual(profile["profile_status"], "validated")
+        self.assertEqual(profile["profile_version"], "2026-09-03.2")
 
 
 if __name__ == "__main__":

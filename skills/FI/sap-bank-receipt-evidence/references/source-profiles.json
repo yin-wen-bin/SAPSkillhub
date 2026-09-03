@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "active_profile_id": "s4-2026-09-bank-receipt-adt-v1",
-  "profile_version": "2026-09-03.1",
-  "profile_status": "unvalidated",
+  "profile_version": "2026-09-03.2",
+  "profile_status": "validated",
   "profiles": {
     "s4-2026-09-bank-receipt-adt-v1": {
-      "enabled": false,
+      "enabled": true,
       "source_id": "bank_statement_item_adt_v1",
       "source_type": "cds",
       "object": "I_ArBankStatementItem",
