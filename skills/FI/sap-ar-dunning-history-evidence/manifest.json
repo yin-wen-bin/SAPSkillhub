@@ -6,6 +6,8 @@
   "entrypoint": "run.py",
   "input_schema": "references/input.schema.json",
   "output_schema": "references/output.schema.json",
+  "public_output_schema": "references/public-output.schema.json",
+  "restricted_row_schema": "references/restricted-row.schema.json",
   "profile": "references/source-profiles.json",
   "allowed_http_methods": ["GET", "POST"],
   "allowed_endpoints": [

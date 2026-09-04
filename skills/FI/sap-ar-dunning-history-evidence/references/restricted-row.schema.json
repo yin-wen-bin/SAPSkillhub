@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-ar-dunning-history-evidence/restricted-row.schema.json",
+  "title": "Restricted AR dunning history row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "dunning_run_date", "dunning_run_id", "company_code", "customer",
+    "accounting_document", "accounting_document_item", "document_reference_id",
+    "one_time_account"
+  ],
+  "properties": {
+    "dunning_run_date": {"type": "string", "format": "date"},
+    "dunning_run_id": {"type": "string"},
+    "company_code": {"type": "string"},
+    "customer": {"type": "string"},
+    "accounting_document": {"type": "string"},
+    "accounting_document_item": {"type": "string"},
+    "document_reference_id": {"type": "string"},
+    "one_time_account": {"type": "string"}
+  }
+}

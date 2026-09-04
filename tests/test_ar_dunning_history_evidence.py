@@ -122,7 +122,11 @@ def test_manifest_and_schemas_are_closed() -> None:
     root = SCRIPT.parents[1]
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     output = json.loads((root / "references" / "output.schema.json").read_text(encoding="utf-8"))
+    restricted = json.loads((root / "references" / "restricted-row.schema.json").read_text(encoding="utf-8"))
+    public = json.loads((root / "references" / "public-output.schema.json").read_text(encoding="utf-8"))
     assert manifest["read_only"] is True
     assert manifest["validated"] is True
     assert manifest["allowed_http_methods"] == ["GET", "POST"]
     assert output["additionalProperties"] is False
+    assert restricted["additionalProperties"] is False
+    assert "restricted_rows" not in public["properties"]

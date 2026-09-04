@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-ar-dunning-history-evidence/public-output.schema.json",
+  "title": "Public SAP AR dunning history evidence output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "skill_id", "run_id", "status", "evidence_status",
+    "read_only", "validated", "requested_scope", "events",
+    "historical_dunning_master_status", "source_profile", "completeness",
+    "limitations", "validation_issues", "started_at", "completed_at", "artifacts",
+    "restricted_artifact_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-ar-dunning-history-evidence"},
+    "run_id": {"type": "string"},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "evidence_status": {"enum": ["available", "not_found", "partial", "source_unavailable", "invalid_input"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "requested_scope": {"type": "object"},
+    "events": {"type": "array", "items": {"type": "object"}},
+    "historical_dunning_master_status": {"const": "not_assessed"},
+    "source_profile": {"type": "object"},
+    "completeness": {"type": "object"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "validation_issues": {"type": "array", "items": {"type": "object"}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}},
+    "restricted_artifact_ref": {"type": ["object", "null"]}
+  }
+}
