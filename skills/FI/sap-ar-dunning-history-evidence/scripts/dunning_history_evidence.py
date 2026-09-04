@@ -19,8 +19,8 @@ SKILL_ID = "sap-ar-dunning-history-evidence"
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = SKILL_ROOT.parents[2]
 PROFILE_PATH = SKILL_ROOT / "references" / "source-profiles.json"
-PAGE_SIZE = 500
 MAX_ROWS = 30_000
+MAX_PAGE_ROWS = 10_000
 ALLOWED_ARTIFACT_ROOTS = (REPO_ROOT / ".artifacts", REPO_ROOT / ".codex-tmp")
 COMPANY_CODE = re.compile(r"^[A-Z0-9]{4}$")
 CUSTOMER = re.compile(r"^[A-Z0-9_-]{1,10}$")
@@ -199,60 +199,79 @@ def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _keyset_predicate(fields: Sequence[str], key: Sequence[str]) -> str:
-    branches = []
-    for index, field in enumerate(fields):
-        equals = [f"{fields[pos]} = {_sql_literal(key[pos])}" for pos in range(index)]
-        branches.append("(" + " AND ".join([*equals, f"{field} > {_sql_literal(key[index])}"]) + ")")
-    return "(" + " OR ".join(branches) + ")"
+def _date_chunks(start_text: str, end_text: str, years: int) -> list[tuple[str, str]]:
+    start = date.fromisoformat(start_text)
+    end = date.fromisoformat(end_text)
+    if end < start or not 1 <= years <= 50:
+        raise DunningError("metadata_incompatible")
+    chunks: list[tuple[str, str]] = []
+    cursor = start
+    while cursor <= end:
+        next_year = min(cursor.year + years, 9999)
+        next_start = date(next_year, 1, 1) if next_year > cursor.year else date.max
+        chunk_end = min(end, next_start.fromordinal(next_start.toordinal() - 1))
+        chunks.append((cursor.strftime("%Y%m%d"), chunk_end.strftime("%Y%m%d")))
+        if chunk_end >= end:
+            break
+        cursor = next_start
+    return chunks
 
 
-def _read_table(client: Any, common: Any, *, object_name: str, fields: Sequence[str], stable_key: Sequence[str], metadata_sha256: str, normalized: Mapping[str, Any]) -> JsonObject:
+def _read_table(client: Any, common: Any, *, object_name: str, fields: Sequence[str], stable_key: Sequence[str], identity_key: Sequence[str], metadata_sha256: str, normalized: Mapping[str, Any]) -> JsonObject:
     source, _path = client.metadata("table", object_name)
     if _sha256(source.encode("utf-8")) != metadata_sha256:
         raise DunningError("metadata_incompatible")
     selected = list(dict.fromkeys([*fields, *stable_key]))
-    predicates = ["KOART = 'D'", f"BUKRS = {_sql_literal(str(normalized['company_code']))}", f"LAUFD <= {_sql_literal(str(normalized['sap_as_of']))}"]
+    base_predicates = ["KOART = 'D'", "LIFNR = ''", "CPDKY = ''", f"BUKRS = {_sql_literal(str(normalized['company_code']))}"]
     customers = ", ".join(_sql_literal(str(value)) for value in normalized["customers"])
-    predicates.append(f"KUNNR IN ({customers})")
+    base_predicates.append(f"KUNNR IN ({customers})")
     if normalized.get("dunning_area") and object_name == "MHND":
-        predicates.append(f"MABER = {_sql_literal(str(normalized['dunning_area']))}")
+        base_predicates.append(f"MABER = {_sql_literal(str(normalized['dunning_area']))}")
     rows: list[JsonObject] = []
     seen: set[tuple[str, ...]] = set()
-    last_key: tuple[str, ...] | None = None
-    total_rows: int | None = None
-    while True:
-        page_predicates = list(predicates)
-        if last_key is not None:
-            page_predicates.append(_keyset_predicate(stable_key, last_key))
-        sql = f"SELECT {', '.join(selected)} FROM {object_name} WHERE {' AND '.join(page_predicates)} ORDER BY {', '.join(stable_key)}"
+    seen_identity: set[tuple[str, ...]] = set()
+    total_rows = 0
+    page_count = 0
+    for date_from, date_to in _date_chunks(
+        str(normalized.get("scope_start_date") or "1900-01-01"),
+        str(normalized["as_of"]),
+        int(normalized.get("date_chunk_years") or 20),
+    ):
+        page_predicates = [*base_predicates, f"LAUFD >= {_sql_literal(date_from)}", f"LAUFD <= {_sql_literal(date_to)}"]
+        sql = (
+            "SELECT\n  "
+            + ",\n  ".join(selected)
+            + f"\nFROM {object_name}\nWHERE\n  "
+            + "\n  AND ".join(page_predicates)
+            + "\nORDER BY\n  "
+            + ",\n  ".join(stable_key)
+        )
         common._validate_compiled_select(sql)
-        preview = client.preview(sql, PAGE_SIZE + 1, prefer_post=True)
+        preview = client.preview(sql, MAX_PAGE_ROWS + 1, prefer_post=True)
+        page_count += 1
         if tuple(str(column).upper() for column in preview.columns) != tuple(field.upper() for field in selected):
             raise DunningError("source_column_mismatch")
         page = [dict(row) for row in preview.rows]
         if not isinstance(preview.total_rows, int) or preview.total_rows < 0:
             raise DunningError("row_count_mismatch")
-        if total_rows is None:
-            total_rows = preview.total_rows
-            if total_rows > min(int(normalized.get("max_rows") or MAX_ROWS), MAX_ROWS):
-                raise DunningError("row_limit_reached")
-        if preview.total_rows != total_rows - len(rows):
+        if preview.total_rows > MAX_PAGE_ROWS or len(page) != preview.total_rows:
             raise DunningError("row_count_mismatch")
-        keep = page[:PAGE_SIZE]
+        total_rows += preview.total_rows
+        if total_rows > min(int(normalized.get("max_rows") or MAX_ROWS), MAX_ROWS):
+            raise DunningError("row_limit_reached")
+        keep = page
         keys = [_row_key(row, stable_key) for row in keep]
-        if keys != sorted(keys) or any(key in seen for key in keys):
+        identities = [_row_key(row, identity_key) for row in keep]
+        if keys != sorted(keys) or len(set(keys)) != len(keys) or any(key in seen for key in keys):
             raise DunningError("paging_incomplete")
+        if len(set(identities)) != len(identities) or any(key in seen_identity for key in identities):
+            raise DunningError("duplicate_stable_key")
         seen.update(keys)
+        seen_identity.update(identities)
         rows.extend(keep)
-        if len(page) <= PAGE_SIZE:
-            break
-        if not keys:
-            raise DunningError("paging_incomplete")
-        last_key = keys[-1]
     if total_rows != len(rows):
         raise DunningError("row_count_mismatch")
-    return {"rows": rows, "total_rows": total_rows, "metadata_sha256": metadata_sha256}
+    return {"rows": rows, "total_rows": total_rows, "page_count": page_count, "metadata_sha256": metadata_sha256}
 
 
 def _load_common_runtime() -> tuple[Any, Any]:
@@ -270,14 +289,20 @@ def _load_common_runtime() -> tuple[Any, Any]:
 
 def _live_source_reader(normalized: JsonObject, profile: Mapping[str, Any]) -> JsonObject:
     common, client = _load_common_runtime()
-    normalized = {**normalized, "max_rows": profile.get("max_rows")}
-    items = _read_table(client, common, object_name=str(profile["item_object"]), fields=ITEM_FIELDS, stable_key=profile["item_stable_paging_key"], metadata_sha256=str(profile["item_metadata_sha256"]), normalized=normalized)
-    headers = _read_table(client, common, object_name=str(profile["header_object"]), fields=HEADER_FIELDS, stable_key=profile["header_stable_paging_key"], metadata_sha256=str(profile["header_metadata_sha256"]), normalized=normalized)
+    normalized = {
+        **normalized,
+        "max_rows": profile.get("max_rows"),
+        "scope_start_date": profile.get("scope_start_date"),
+        "date_chunk_years": profile.get("date_chunk_years"),
+    }
+    items = _read_table(client, common, object_name=str(profile["item_object"]), fields=ITEM_FIELDS, stable_key=profile["item_stable_paging_key"], identity_key=profile["item_identity_key"], metadata_sha256=str(profile["item_metadata_sha256"]), normalized=normalized)
+    headers = _read_table(client, common, object_name=str(profile["header_object"]), fields=HEADER_FIELDS, stable_key=profile["header_stable_paging_key"], identity_key=profile["header_identity_key"], metadata_sha256=str(profile["header_metadata_sha256"]), normalized=normalized)
     return {"items": items, "headers": headers}
 
 
 def _join_key(row: Mapping[str, Any], *, item: bool) -> tuple[str, ...]:
-    fields = ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "GSBER" if item else "BUSAB"]
+    del item
+    fields = ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK"]
     return _row_key(row, fields)
 
 

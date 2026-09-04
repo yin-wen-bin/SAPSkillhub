@@ -2,7 +2,7 @@
   "schema_version": 1,
   "skill_id": "sap-ar-dunning-history-evidence",
   "read_only": true,
-  "validated": false,
+  "validated": true,
   "entrypoint": "run.py",
   "input_schema": "references/input.schema.json",
   "output_schema": "references/output.schema.json",
@@ -14,5 +14,6 @@
   ],
   "timeout_seconds": 300,
   "profile_version": "2026-09-04.1",
-  "profile_status": "unvalidated"
+  "profile_status": "validated",
+  "metadata_sha256": "3bfba2b91ee6bccb334f15f4257515a36931f1cb7949ddf2bf48492085ef6969"
 }

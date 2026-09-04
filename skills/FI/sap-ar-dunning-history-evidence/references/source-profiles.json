@@ -1,24 +1,30 @@
 {
   "schema_version": 1,
   "profile_version": "2026-09-04.1",
-  "profile_status": "unvalidated",
+  "profile_status": "validated",
   "active_profile_id": "local-s4hana-mhnk-mhnd",
   "profiles": {
     "local-s4hana-mhnk-mhnd": {
-      "enabled": false,
+      "enabled": true,
       "source_id": "mhnk-mhnd-adt-v1",
       "source_kind": "adt_data_preview",
+      "metadata_sha256": "3bfba2b91ee6bccb334f15f4257515a36931f1cb7949ddf2bf48492085ef6969",
       "selection_reason": "The released I_DunningEntryItem view exists, but the target ADT Data Preview rejects the complete item key projection; the live-DDIC-validated MHNK/MHND fallback preserves the full stable business key.",
       "effective_date_field": "MHNK-AUSDT",
       "effective_time_field": null,
       "business_sequence_fields": ["LAUFD", "LAUFI"],
       "item_object": "MHND",
       "item_metadata_sha256": "37ae8cc2aaab3b3b260f42538f9af113f50baa5d6669d5a1366304da40e81c93",
-      "item_stable_paging_key": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "BBUKRS", "BELNR", "GJAHR", "BUZEI"],
+      "item_stable_paging_key": ["LAUFD", "LAUFI", "KUNNR", "SKNRZE", "SMABER", "SMAHSK", "BBUKRS", "BELNR", "GJAHR", "BUZEI"],
+      "item_identity_key": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "BBUKRS", "BELNR", "GJAHR", "BUZEI"],
       "header_object": "MHNK",
       "header_metadata_sha256": "ab7c6e7ab7972c83e9a992191077b44c2507472d4471e255d3f8f6046171801a",
-      "header_stable_paging_key": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "BUSAB"],
-      "join_fields": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "GSBER=BUSAB"],
+      "header_stable_paging_key": ["LAUFD", "LAUFI", "KUNNR", "SKNRZE", "SMABER", "SMAHSK", "BUSAB"],
+      "header_identity_key": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK", "BUSAB"],
+      "join_fields": ["MANDT", "LAUFD", "LAUFI", "KOART", "BUKRS", "KUNNR", "LIFNR", "CPDKY", "SKNRZE", "SMABER", "SMAHSK"],
+      "scope_start_date": "2010-01-01",
+      "date_chunk_years": 10,
+      "earliest_observed_run_date": "2018-03-12",
       "max_rows": 30000
     }
   }

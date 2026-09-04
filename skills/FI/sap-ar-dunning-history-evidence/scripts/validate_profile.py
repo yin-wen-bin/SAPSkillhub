@@ -34,13 +34,16 @@ def _baseline_rows(common: Any, client: Any, runtime: Any, task: dict[str, Any])
     selected = list(runtime.ITEM_FIELDS)
     customers = ", ".join("'" + value.replace("'", "''") + "'" for value in task["customers"])
     sql = (
-        f"SELECT {', '.join(selected)} FROM MHND "
-        f"WHERE KOART = 'D' AND BUKRS = '{task['company_code']}' "
-        f"AND LAUFD <= '{task['as_of'].replace('-', '')}' AND KUNNR IN ({customers}) "
-        f"ORDER BY {', '.join(runtime._load_profile()['item_stable_paging_key'])}"
+        "SELECT\n  " + ",\n  ".join(selected)
+        + "\nFROM MHND\nWHERE\n  KOART = 'D'"
+        + "\n  AND LIFNR = ''\n  AND CPDKY = ''"
+        + f"\n  AND BUKRS = '{task['company_code']}'"
+        + f"\n  AND LAUFD <= '{task['as_of'].replace('-', '')}'"
+        + f"\n  AND KUNNR IN ({customers})"
+        + "\nORDER BY\n  " + ",\n  ".join(runtime._load_profile()["item_stable_paging_key"])
     )
     common._validate_compiled_select(sql)
-    preview = client.preview(sql, runtime.MAX_ROWS + 1, prefer_post=True)
+    preview = client.preview(sql, 500, prefer_post=True)
     if preview.total_rows != len(preview.rows) or preview.total_rows > runtime.MAX_ROWS:
         raise RuntimeError("baseline_incomplete")
     return [dict(row) for row in preview.rows]
@@ -67,12 +70,8 @@ def run(output: Path) -> dict[str, Any]:
     task = {"schema_version": 1, "company_code": company, "customers": customers, "as_of": date.today().isoformat()}
     profile = runtime._load_profile()
     validation_profile = {**profile, "enabled": True, "profile_status": "validated"}
-    original_page_size = runtime.PAGE_SIZE
-    runtime.PAGE_SIZE = 25
-    try:
-        nonzero = runtime.execute(task, profile=validation_profile, current_date=date.today())
-    finally:
-        runtime.PAGE_SIZE = original_page_size
+    validation_profile.update(scope_start_date="2018-01-01", date_chunk_years=4)
+    nonzero = runtime.execute(task, profile=validation_profile, current_date=date.today())
     baseline = _baseline_rows(common, client, runtime, task)
     expected_keys = {
         (str(row.get("BUKRS") or ""), str(row.get("KUNNR") or ""), str(row.get("BELNR") or ""), str(row.get("GJAHR") or ""), str(row.get("BUZEI") or ""), str(row.get("LAUFD") or ""), str(row.get("LAUFI") or ""))
@@ -108,15 +107,15 @@ def run(output: Path) -> dict[str, Any]:
             "customer_count": len(customers),
             "baseline_row_count": len(baseline),
             "event_count": len(nonzero.get("events") or []),
-            "forced_page_size": 25,
-            "multipage": len(baseline) > 25,
+            "forced_date_chunk_years": 4,
+            "multipage": True,
         },
         "zero_sample": {"customer_hash": _hash_identifier(absent), "event_count": 0},
         "checks": [
             "live_ddic_metadata_match",
             "nonzero_complete_key_match",
             "complete_zero_result",
-            "forced_keyset_paging",
+            "forced_date_chunk_paging",
             "public_restricted_split",
             "historical_master_not_assessed",
         ],

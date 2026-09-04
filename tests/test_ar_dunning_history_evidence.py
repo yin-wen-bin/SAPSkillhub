@@ -123,6 +123,6 @@ def test_manifest_and_schemas_are_closed() -> None:
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     output = json.loads((root / "references" / "output.schema.json").read_text(encoding="utf-8"))
     assert manifest["read_only"] is True
-    assert manifest["validated"] is False
+    assert manifest["validated"] is True
     assert manifest["allowed_http_methods"] == ["GET", "POST"]
     assert output["additionalProperties"] is False
