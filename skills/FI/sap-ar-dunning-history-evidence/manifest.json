@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "skill_id": "sap-ar-dunning-history-evidence",
+  "read_only": true,
+  "validated": false,
+  "entrypoint": "run.py",
+  "input_schema": "references/input.schema.json",
+  "output_schema": "references/output.schema.json",
+  "profile": "references/source-profiles.json",
+  "allowed_http_methods": ["GET", "POST"],
+  "allowed_endpoints": [
+    "/sap/bc/adt/datapreview/freestyle",
+    "/sap/bc/adt/ddic/tables/{ddic_object}/source/main"
+  ],
+  "timeout_seconds": 300,
+  "profile_version": "2026-09-04.1",
+  "profile_status": "unvalidated"
+}

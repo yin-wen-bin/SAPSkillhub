@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-ar-dunning-history-evidence/input.schema.json",
+  "title": "SAP AR dunning history evidence input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "company_code", "customers", "as_of"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "company_code": {"type": "string", "pattern": "^[A-Z0-9]{4}$"},
+    "customers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z0-9_-]{1,10}$"}
+    },
+    "as_of": {"type": "string", "format": "date"},
+    "dunning_area": {"type": "string", "pattern": "^[A-Z0-9_-]{1,2}$"}
+  }
+}

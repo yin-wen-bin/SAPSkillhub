@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sapskillhub.local/sap-ar-dunning-history-evidence/output.schema.json",
+  "title": "SAP AR dunning history evidence output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "skill_id", "run_id", "status", "evidence_status",
+    "read_only", "validated", "requested_scope", "events", "restricted_rows",
+    "historical_dunning_master_status", "source_profile", "completeness",
+    "limitations", "validation_issues", "started_at", "completed_at", "artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "skill_id": {"const": "sap-ar-dunning-history-evidence"},
+    "run_id": {"type": "string"},
+    "status": {"enum": ["complete", "partial", "failed"]},
+    "evidence_status": {"enum": ["available", "not_found", "partial", "source_unavailable", "invalid_input"]},
+    "read_only": {"const": true},
+    "validated": {"type": "boolean"},
+    "requested_scope": {"type": "object"},
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "customer", "company_code", "dunning_area", "dunning_run_id",
+          "dunning_run_date", "effective_dunning_date", "fiscal_year",
+          "accounting_document", "accounting_document_item", "dunning_level",
+          "old_dunning_level", "dunning_blocking_reason", "dunning_reversal_status",
+          "special_gl_code", "amount", "currency", "sequence_status"
+        ],
+        "properties": {
+          "customer": {"type": "string"},
+          "company_code": {"type": "string"},
+          "dunning_area": {"type": "string"},
+          "dunning_run_id": {"type": "string"},
+          "dunning_run_date": {"type": "string", "format": "date"},
+          "effective_dunning_date": {"type": ["string", "null"], "format": "date"},
+          "fiscal_year": {"type": "string"},
+          "accounting_document": {"type": "string"},
+          "accounting_document_item": {"type": "string"},
+          "dunning_level": {"type": "string"},
+          "old_dunning_level": {"type": "string"},
+          "dunning_blocking_reason": {"type": "string"},
+          "dunning_reversal_status": {"const": "not_assessed"},
+          "special_gl_code": {"type": "string"},
+          "amount": {"type": "string"},
+          "currency": {"type": "string"},
+          "sequence_status": {"enum": ["ordered", "ambiguous"]}
+        }
+      }
+    },
+    "restricted_rows": {"type": "array", "items": {"type": "object"}},
+    "historical_dunning_master_status": {"const": "not_assessed"},
+    "source_profile": {"type": "object"},
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_complete", "evidence_complete", "paging_complete", "total_rows", "returned_rows", "truncated"],
+      "properties": {
+        "source_complete": {"type": "boolean"},
+        "evidence_complete": {"type": "boolean"},
+        "paging_complete": {"type": "boolean"},
+        "total_rows": {"type": ["integer", "null"], "minimum": 0},
+        "returned_rows": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "validation_issues": {"type": "array", "items": {"type": "object"}},
+    "started_at": {"type": "string"},
+    "completed_at": {"type": "string"},
+    "artifacts": {"type": "array", "items": {"type": "object"}}
+  }
+}
