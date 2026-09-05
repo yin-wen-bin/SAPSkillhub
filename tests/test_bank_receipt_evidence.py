@@ -164,6 +164,26 @@ class BankReceiptEvidenceTests(unittest.TestCase):
         self.assertTrue(result["completeness"]["evidence_complete"])
         self.assertEqual(result["completeness"]["total_rows"], 0)
 
+    def test_posting_error_zero_is_not_failure_and_lifecycle_m_is_completed(self):
+        result = self.execute(
+            [
+                _row(
+                    POSTINGERRORSTATUS="0",
+                    BANKSTATEMENTITEMLIFECYCSTS="M",
+                    BANKLEDGERDOCUMENT="*",
+                    SUBLEDGERDOCUMENT="*",
+                    FISCALYEAR="0000",
+                )
+            ]
+        )
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["receipts"][0]["posting_status"], "completed")
+
+    def test_unmapped_posting_error_status_fails_closed(self):
+        result = self.execute([_row(POSTINGERRORSTATUS="9")])
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["validation_issues"][0]["code"], "status_mapping_unknown")
+
     def test_unvalidated_profile_never_calls_source(self):
         calls: list[object] = []
         result = MODULE.execute(
@@ -432,7 +452,7 @@ class BankReceiptEvidenceTests(unittest.TestCase):
         profile = MODULE._load_profile()
         self.assertTrue(profile["enabled"])
         self.assertEqual(profile["profile_status"], "validated")
-        self.assertEqual(profile["profile_version"], "2026-09-03.2")
+        self.assertEqual(profile["profile_version"], "2026-09-05.1")
 
 
 if __name__ == "__main__":

@@ -333,21 +333,30 @@ def _status_values(row: Mapping[str, Any], profile: Mapping[str, Any]) -> tuple[
         raise ReceiptError("status_mapping_unknown")
     reversal_status = str(reversal_map[raw_status])
     lifecycle = str(_row_value(row, "BankStatementItemLifeCycSts") or "").strip()
-    allowed_lifecycle = profile.get("allowed_lifecycle_statuses")
-    if not isinstance(allowed_lifecycle, list) or lifecycle not in allowed_lifecycle:
+    lifecycle_map = profile.get("lifecycle_status_mapping")
+    if not isinstance(lifecycle_map, dict) or lifecycle not in lifecycle_map:
         raise ReceiptError("status_mapping_unknown")
+    lifecycle_state = str(lifecycle_map[lifecycle])
     completed = str(_row_value(row, "IsCompleted") or "").strip().upper()
     in_process = str(_row_value(row, "IsInProcess") or "").strip().upper()
     if completed not in {"", "X"} or in_process not in {"", "X"}:
         raise ReceiptError("status_mapping_unknown")
     posting_error = str(_row_value(row, "PostingErrorStatus") or "").strip()
-    if posting_error or raw_status in {"A", "E"}:
+    posting_error_map = profile.get("posting_error_status_mapping")
+    if not isinstance(posting_error_map, dict) or posting_error not in posting_error_map:
+        raise ReceiptError("status_mapping_unknown")
+    posting_error_state = str(posting_error_map[posting_error])
+    if posting_error_state == "error" or raw_status in {"A", "E"}:
         posting_status = "posting_failed"
-    elif in_process == "X" or raw_status in {"P", "Q"}:
+    elif posting_error_state != "none":
+        raise ReceiptError("status_mapping_unknown")
+    elif in_process == "X" or raw_status in {"P", "Q"} or lifecycle_state == "partially_applied":
         posting_status = "in_process"
-    elif completed == "X" or raw_status in {"8", "S", "R"}:
+    elif completed == "X" or raw_status in {"8", "S", "R"} or lifecycle_state in {
+        "completed", "completed_on_account", "completed_set_to_done"
+    }:
         posting_status = "completed"
-    elif raw_status in {"", "0", "2", "7"}:
+    elif raw_status in {"", "0", "2", "7"} and lifecycle_state == "not_completed":
         posting_status = "not_completed"
     else:
         raise ReceiptError("status_mapping_unknown")

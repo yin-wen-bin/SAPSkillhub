@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "active_profile_id": "s4-2026-09-bank-receipt-adt-v1",
-  "profile_version": "2026-09-03.2",
+  "profile_version": "2026-09-05.1",
   "profile_status": "validated",
   "profiles": {
     "s4-2026-09-bank-receipt-adt-v1": {
@@ -63,7 +63,28 @@
         "Q": "reversal_in_process",
         "E": "reversal_failed"
       },
-      "allowed_lifecycle_statuses": ["", "R", "G"],
+      "posting_error_status_mapping": {
+        "": "none",
+        "0": "none",
+        "1": "error"
+      },
+      "lifecycle_status_mapping": {
+        "": "not_completed",
+        "O": "not_completed",
+        "R": "not_completed",
+        "P": "partially_applied",
+        "Y": "completed_on_account",
+        "G": "completed",
+        "M": "completed_set_to_done"
+      },
+      "status_semantics": {
+        "posting_error_field": "FEBEP-ESTAT",
+        "posting_error_data_element": "ESTAT_EB",
+        "posting_error_metadata_sha256": "1d9e126448448b06f239ea8aa8c0304727ebea28720d0a299c4ee974793853f9",
+        "lifecycle_domain": "FARP_BS_ITM_LIFECYC_STAT",
+        "lifecycle_m_text": "Set to Done",
+        "lifecycle_source_sha256": "a28ee2de8f828ff9710fe9d2c35d35b6525f304b32304bff41d1eb9fb7527e16"
+      },
       "hash_key_id": "bank-receipt-hmac-v1"
     }
   },

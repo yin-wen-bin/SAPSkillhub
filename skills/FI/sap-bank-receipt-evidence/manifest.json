@@ -13,6 +13,6 @@
     "/sap/bc/adt/datapreview/freestyle",
     "/sap/bc/adt/ddic/ddl/sources/{ddic_object}/source/main"
   ],
-  "profile_version": "2026-09-03.2",
+  "profile_version": "2026-09-05.1",
   "profile_status": "validated"
 }
